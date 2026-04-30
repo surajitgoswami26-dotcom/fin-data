@@ -16,9 +16,9 @@ st.set_page_config(
 
 # ── Login credentials (override via Railway environment variables) ────────────
 _ADMIN_USER = os.environ.get("ADMIN_USER", "admin")
-_ADMIN_PASS = os.environ.get("ADMIN_PASS", "TRAdmin@2026")
+_ADMIN_PASS = os.environ.get("ADMIN_PASS", "TRAdmin2026")
 _SALES_USER = os.environ.get("SALES_USER", "sales")
-_SALES_PASS = os.environ.get("SALES_PASS", "TRSales@2026")
+_SALES_PASS = os.environ.get("SALES_PASS", "TRSales2026")
 
 COST_COLS = [
     "Salary/Payroll", "Bench Payroll", "Marketing & BD",
@@ -3315,13 +3315,15 @@ div[data-testid="stForm"] button[kind="primaryFormSubmit"]:hover {
             submitted = st.form_submit_button("Sign In →", type="primary", use_container_width=True)
 
     if submitted:
-        if username == _ADMIN_USER and password == _ADMIN_PASS:
+        u = username.strip()
+        p = password.strip()
+        if u == _ADMIN_USER.strip() and p == _ADMIN_PASS.strip():
             st.session_state["role"] = "admin"
-            st.session_state["username"] = username
+            st.session_state["username"] = u
             st.rerun()
-        elif username == _SALES_USER and password == _SALES_PASS:
+        elif u == _SALES_USER.strip() and p == _SALES_PASS.strip():
             st.session_state["role"] = "sales"
-            st.session_state["username"] = username
+            st.session_state["username"] = u
             st.rerun()
         else:
             st.error("Invalid username or password.")
