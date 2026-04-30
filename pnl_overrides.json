@@ -1,0 +1,183 @@
+{
+  "Feb 2025": {
+    "Veerendra/Veer": {
+      "Salary ($)": 1408.9
+    },
+    "Sameer Tripathi": {
+      "Billing ($)": 1276.49
+    }
+  },
+  "Jan 2026": {
+    "Nikunj": {
+      "Billing ($)": 2400.00
+    },
+    "Vaishnav Bhopale": {
+      "Billing ($)": 1909.09
+    },
+    "Shivani Pawar": {
+      "Billing ($)": 1743.18
+    },
+    "Amardeep": {
+      "Billing ($)": 1818.18
+    },
+    "Prerna Chhetry": {
+      "Billing ($)": 1163.64
+    },
+    "Krishna Shah": {
+      "Billing ($)": 2000.00
+    },
+    "Dipak": {
+      "Billing ($)": 2500.00
+    },
+    "Rochelle Extross": {
+      "Billing ($)": 1584.09
+    },
+    "Mudassar": {
+      "Billing ($)": 1988.64
+    },
+    "Pooja Kumari": {
+      "Billing ($)": 2179.55
+    },
+    "Ravi Kumar": {
+      "Billing ($)": 2179.55
+    },
+    "Uvesh Kadri": {
+      "Billing ($)": 2578.00
+    },
+    "Vinodh K": {
+      "Billing ($)": 4534.00
+    },
+    "Amritha": {
+      "Billing ($)": 6116.00
+    },
+    "Kimaya": {
+      "Billing ($)": 4734.00
+    },
+    "Sameer Tripathi": {
+      "Billing ($)": 1649.44
+    },
+    "Chintan": {
+      "Billing ($)": 731.00
+    },
+    "Purnayu": {
+      "Billing ($)": 731.00
+    },
+    "Abhay Panchal": {
+      "Billing ($)": 731.00
+    }
+  },
+  "Feb 2026": {
+    "_remove_from_billing": ["Nandini"],
+    "Maya": {
+      "Salary ($)": 324.35,
+      "Billing ($)": 655.00
+    },
+    "Ashok": {
+      "Salary ($)": 377.52,
+      "Billing ($)": 1455.00
+    },
+    "Chintan": {
+      "Billing ($)": 731.00
+    },
+    "Purnayu": {
+      "Billing ($)": 731.00
+    },
+    "Abhay Panchal": {
+      "Billing ($)": 731.00
+    },
+    "Shivani Pawar": {
+      "Billing ($)": 1690.00
+    },
+    "Krishna Shah": {
+      "Billing ($)": 2025.00
+    },
+    "Tanmay": {
+      "Billing ($)": 2400.00
+    },
+    "Rochelle Extross": {
+      "Billing ($)": 155.00
+    },
+    "Mudassar": {
+      "Billing ($)": 2045.00
+    },
+    "Pooja Kumari": {
+      "Billing ($)": 2255.00
+    },
+    "Vishal Patel": {
+      "Billing ($)": 2045.00
+    },
+    "Viraj": {
+      "Billing ($)": 1855.00
+    },
+    "Ravi Kumar": {
+      "Billing ($)": 1730.00
+    },
+    "Vinodh K": {
+      "Billing ($)": 4412.00
+    },
+    "Amritha": {
+      "Billing ($)": 5994.00
+    },
+    "Kimaya": {
+      "Billing ($)": 4612.00
+    },
+    "Amit Odedra": {
+      "Bench ($)": 346.84
+    },
+    "Ashok Kumar": {
+      "Bench ($)": 377.52
+    },
+    "Amardeep": {
+      "Bench ($)": 644.60
+    },
+    "Dorcas": {
+      "Bench ($)": 445.00
+    },
+    "Pranali": {
+      "Bench ($)": 191.19
+    },
+    "Jenish": {
+      "Bench ($)": 730.39
+    },
+    "Dipak": {
+      "Bench ($)": 759.38
+    },
+    "Arpit Patel": {
+      "Bench ($)": 502.32
+    },
+    "Bhaskar Pandit": {
+      "Bench ($)": 827.15
+    },
+    "Parth Chauhan": {
+      "Bench ($)": 80.85
+    },
+    "Raghav Gupta": {
+      "Bench ($)": 509.10
+    },
+    "Rajat Gupta": {
+      "Bench ($)": 482.90
+    },
+    "Sahil Kaushal": {
+      "Bench ($)": 92.30
+    },
+    "Shubham Kanojiya": {
+      "Bench ($)": 491.05
+    },
+    "Nandini": {
+      "Bench ($)": 550.13
+    }
+  },
+  "Mar 2026": {
+    "_remove_from_billing": ["Nandini"],
+    "Maya": {
+      "Salary ($)": 324.35
+    },
+    "Ashok": {
+      "Salary ($)": 377.52,
+      "Billing ($)": 1455.00
+    },
+    "Nandini": {
+      "Bench ($)": 555.02
+    }
+  }
+}

@@ -1,0 +1,163 @@
+{
+  "Marketing": [
+    {
+      "Name": "Adarsh Patanayak",
+      "Designation": "Marketing",
+      "Email": "",
+      "Phone": "",
+      "Salary ($)": 895.56,
+      "Join Date": "",
+      "Notes": ""
+    },
+    {
+      "Name": "Anjali Jaiswal",
+      "Designation": "Marketing",
+      "Email": "",
+      "Phone": "",
+      "Salary ($)": 355.56,
+      "Join Date": "",
+      "Notes": ""
+    },
+    {
+      "Name": "Dominic Daniel",
+      "Designation": "Business Development",
+      "Email": "",
+      "Phone": "",
+      "Salary ($)": 730.0,
+      "Join Date": "",
+      "Notes": "BD"
+    },
+    {
+      "Name": "Shravan Korde",
+      "Designation": "Business Development",
+      "Email": "",
+      "Phone": "",
+      "Salary ($)": 1618.89,
+      "Join Date": "",
+      "Notes": "BD"
+    },
+    {
+      "Name": "Brett Williams",
+      "Designation": "Business Development",
+      "Email": "",
+      "Phone": "",
+      "Salary ($)": 10547.44,
+      "Join Date": "",
+      "Notes": "BD"
+    },
+    {
+      "Name": "Jen",
+      "Designation": "Business Development",
+      "Email": "",
+      "Phone": "",
+      "Salary ($)": 3912.14,
+      "Join Date": "",
+      "Notes": "BD"
+    },
+    {
+      "Name": "Kenzie",
+      "Designation": "Business Development",
+      "Email": "",
+      "Phone": "",
+      "Salary ($)": 2608.10,
+      "Join Date": "",
+      "Notes": "BD"
+    }
+  ],
+  "HR": [
+    {
+      "Name": "Monica Goswami",
+      "Designation": "HR",
+      "Email": "",
+      "Phone": "",
+      "Salary ($)": 754.74,
+      "Join Date": "",
+      "Notes": ""
+    },
+    {
+      "Name": "Namrata Mehta",
+      "Designation": "HR",
+      "Email": "",
+      "Phone": "",
+      "Salary ($)": 1013.8,
+      "Join Date": "",
+      "Notes": ""
+    }
+  ],
+  "Admin": [
+    {
+      "Name": "Jinesh Patel",
+      "Designation": "Admin",
+      "Email": "",
+      "Phone": "",
+      "Salary ($)": 644.44,
+      "Join Date": "",
+      "Notes": ""
+    },
+    {
+      "Name": "Hinal Sapra",
+      "Designation": "Admin",
+      "Email": "",
+      "Phone": "",
+      "Salary ($)": 454.44,
+      "Join Date": "",
+      "Notes": ""
+    }
+  ],
+  "Management": [
+    {
+      "Name": "Satyen Chokshi",
+      "Designation": "Managing Director",
+      "Email": "",
+      "Phone": "",
+      "Salary ($)": 10423.44,
+      "Join Date": "",
+      "Notes": ""
+    },
+    {
+      "Name": "Nishant Trivedi",
+      "Designation": "Director",
+      "Email": "",
+      "Phone": "",
+      "Salary ($)": 1633.33,
+      "Join Date": "",
+      "Notes": ""
+    },
+    {
+      "Name": "Jackson Sharma",
+      "Designation": "Management - BRC",
+      "Email": "",
+      "Phone": "",
+      "Salary ($)": 1596.0,
+      "Join Date": "",
+      "Notes": "Baroda"
+    },
+    {
+      "Name": "Surajit Goswami",
+      "Designation": "Management",
+      "Email": "",
+      "Phone": "",
+      "Salary ($)": 1222.22,
+      "Join Date": "",
+      "Notes": ""
+    },
+    {
+      "Name": "Vaibhav Dave",
+      "Designation": "Management - AMD",
+      "Email": "",
+      "Phone": "",
+      "Salary ($)": 697.73,
+      "Join Date": "",
+      "Notes": "Ahmedabad"
+    },
+    {
+      "Name": "Mayur Mahajan",
+      "Designation": "Management - PNQ",
+      "Email": "",
+      "Phone": "",
+      "Salary ($)": 150.16,
+      "Join Date": "",
+      "Notes": "Pune"
+    }
+  ]
+}

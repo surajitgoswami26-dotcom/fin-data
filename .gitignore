@@ -2,17 +2,6 @@
 __pycache__/
 *.pyc
 *.pyo
-.env
-
-# Sensitive data — do NOT commit to repo
-data.json
-employees.json
-expenses.json
-pnl_overrides.json
-fx_rates.json
-config.json
-sales_persons.json
-uploads/
 
 # OS
 .DS_Store
