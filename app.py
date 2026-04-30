@@ -3154,74 +3154,165 @@ hr { background: linear-gradient(90deg,transparent,rgba(0,180,140,0.35),transpar
 
 
 def _page_login():
-    _inject_css()
     st.markdown("""
 <style>
-@keyframes fadeInDown {
-  from { opacity: 0; transform: translateY(-30px); }
-  to   { opacity: 1; transform: translateY(0); }
+/* ── Full-page background ───────────────────────────────────────────── */
+[data-testid="stAppViewContainer"] {
+    background: radial-gradient(ellipse at 20% 50%, #0a2a20 0%, #060f0d 60%, #000000 100%) !important;
 }
-@keyframes fadeInUp {
-  from { opacity: 0; transform: translateY(20px); }
-  to   { opacity: 1; transform: translateY(0); }
+[data-testid="stHeader"] { background: transparent !important; }
+
+/* ── Hide sidebar on login ──────────────────────────────────────────── */
+[data-testid="stSidebar"] { display: none !important; }
+[data-testid="collapsedControl"] { display: none !important; }
+
+/* ── Floating particles (CSS-only) ─────────────────────────────────── */
+@keyframes float1 {
+  0%,100% { transform: translateY(0px) translateX(0px); opacity:0.6; }
+  50%      { transform: translateY(-40px) translateX(15px); opacity:0.2; }
 }
-@keyframes pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(0,180,140,0.4); }
-  50%       { box-shadow: 0 0 0 12px rgba(0,180,140,0); }
+@keyframes float2 {
+  0%,100% { transform: translateY(0px) translateX(0px); opacity:0.4; }
+  50%      { transform: translateY(30px) translateX(-20px); opacity:0.1; }
 }
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to   { transform: rotate(360deg); }
+@keyframes float3 {
+  0%,100% { transform: translateY(0px) translateX(0px); opacity:0.3; }
+  33%      { transform: translateY(-20px) translateX(10px); opacity:0.6; }
+  66%      { transform: translateY(15px) translateX(-10px); opacity:0.2; }
 }
-.login-wrapper {
-  display: flex; justify-content: center; align-items: center;
-  min-height: 80vh;
+@keyframes glow-ring {
+  0%,100% { box-shadow: 0 0 0 0 rgba(0,180,140,0.5), 0 0 20px rgba(0,180,140,0.2); }
+  50%      { box-shadow: 0 0 0 10px rgba(0,180,140,0), 0 0 40px rgba(0,180,140,0.35); }
+}
+@keyframes slideUp {
+  from { opacity:0; transform:translateY(40px); }
+  to   { opacity:1; transform:translateY(0); }
+}
+@keyframes shimmer {
+  0%   { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+
+.login-particles {
+  position:fixed; top:0; left:0; width:100%; height:100%;
+  pointer-events:none; overflow:hidden; z-index:0;
+}
+.particle {
+  position:absolute; border-radius:50%;
+  background: rgba(0,180,140,0.15);
+}
+.p1 { width:180px;height:180px; top:10%; left:5%;  animation:float1 8s ease-in-out infinite; }
+.p2 { width:100px;height:100px; top:60%; left:80%; animation:float2 6s ease-in-out infinite; }
+.p3 { width:60px; height:60px;  top:80%; left:15%; animation:float3 7s ease-in-out infinite; }
+.p4 { width:40px; height:40px;  top:25%; left:70%; animation:float1 9s ease-in-out infinite reverse; }
+.p5 { width:120px;height:120px; top:45%; left:90%; animation:float2 10s ease-in-out infinite; }
+
+/* ── Card ───────────────────────────────────────────────────────────── */
+.login-outer {
+  display:flex; justify-content:center; align-items:center;
+  min-height:92vh; position:relative; z-index:1;
 }
 .login-card {
-  width: 420px;
-  background: linear-gradient(160deg, #0d2d24 0%, #081a15 100%);
+  width:440px;
+  background: linear-gradient(160deg, rgba(13,45,36,0.95) 0%, rgba(6,18,14,0.98) 100%);
   border: 1px solid rgba(0,180,140,0.3);
-  border-radius: 20px;
-  padding: 48px 44px 40px;
-  box-shadow: 0 20px 60px rgba(0,0,0,0.5), 0 0 40px rgba(0,180,140,0.08);
-  animation: fadeInDown 0.6s ease both;
+  border-radius: 24px;
+  padding: 48px 44px 44px;
+  box-shadow: 0 25px 80px rgba(0,0,0,0.6), 0 0 60px rgba(0,180,140,0.07), inset 0 1px 0 rgba(0,180,140,0.15);
+  animation: slideUp 0.65s cubic-bezier(0.22,1,0.36,1) both;
+  backdrop-filter: blur(20px);
 }
-.login-logo-ring {
-  width: 72px; height: 72px; margin: 0 auto 20px;
-  border-radius: 50%;
-  border: 2px solid rgba(0,180,140,0.5);
-  display: flex; align-items: center; justify-content: center;
-  font-size: 2rem;
-  animation: pulse 2.4s infinite;
-  background: rgba(0,180,140,0.08);
+.login-ring {
+  width:80px; height:80px; margin:0 auto 22px;
+  border-radius:50%;
+  border: 2px solid rgba(0,180,140,0.6);
+  display:flex; align-items:center; justify-content:center;
+  font-size:2.2rem;
+  animation: glow-ring 2.5s ease-in-out infinite;
+  background: radial-gradient(circle, rgba(0,180,140,0.15) 0%, transparent 70%);
 }
-.login-title {
-  color: #00b48c; font-size: 1.8rem; font-weight: 700;
-  text-align: center; margin: 0 0 6px; letter-spacing: 1px;
+.login-brand {
+  background: linear-gradient(90deg, #00b48c, #00e0b0, #00b48c);
+  background-size: 200% auto;
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  animation: shimmer 3s linear infinite;
+  font-size:2rem; font-weight:800; text-align:center;
+  margin:0 0 6px; letter-spacing:1.5px;
 }
 .login-sub {
-  color: #5aaa8a; font-size: 0.82rem;
-  text-align: center; margin: 0 0 32px; letter-spacing: 0.3px;
+  color:#5aaa8a; font-size:0.8rem; text-align:center;
+  margin:0 0 28px; letter-spacing:0.5px; text-transform:uppercase;
 }
-.login-divider {
-  border: none; border-top: 1px solid rgba(0,180,140,0.15);
-  margin: 0 0 24px;
+.login-sep {
+  border:none; border-top:1px solid rgba(0,180,140,0.12); margin:0 0 28px;
+}
+
+/* ── Style Streamlit form elements inside the card ──────────────────── */
+div[data-testid="stForm"] {
+  background: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+}
+div[data-testid="stForm"] input {
+  background: rgba(0,180,140,0.06) !important;
+  border: 1px solid rgba(0,180,140,0.2) !important;
+  border-radius: 10px !important;
+  color: #d0f0e8 !important;
+  font-size: 0.95rem !important;
+}
+div[data-testid="stForm"] input:focus {
+  border-color: rgba(0,180,140,0.6) !important;
+  box-shadow: 0 0 0 2px rgba(0,180,140,0.15) !important;
+}
+div[data-testid="stForm"] label {
+  color: #7ac8a8 !important;
+  font-size: 0.75rem !important;
+  letter-spacing: 0.8px !important;
+  text-transform: uppercase !important;
+  font-weight: 600 !important;
+}
+div[data-testid="stForm"] button[kind="primaryFormSubmit"] {
+  background: linear-gradient(90deg, #00b48c, #00c89e) !important;
+  border: none !important;
+  border-radius: 10px !important;
+  font-size: 1rem !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.5px !important;
+  height: 48px !important;
+  margin-top: 8px !important;
+  transition: all 0.2s ease !important;
+}
+div[data-testid="stForm"] button[kind="primaryFormSubmit"]:hover {
+  background: linear-gradient(90deg, #00c89e, #00e0b0) !important;
+  transform: translateY(-1px) !important;
+  box-shadow: 0 8px 24px rgba(0,180,140,0.35) !important;
 }
 </style>
-<div class="login-wrapper">
+
+<div class="login-particles">
+  <div class="particle p1"></div>
+  <div class="particle p2"></div>
+  <div class="particle p3"></div>
+  <div class="particle p4"></div>
+  <div class="particle p5"></div>
+</div>
+
+<div class="login-outer">
   <div class="login-card">
-    <div class="login-logo-ring">🔐</div>
-    <h1 class="login-title">TalentRupt</h1>
+    <div class="login-ring">🔐</div>
+    <p class="login-brand">TalentRupt</p>
     <p class="login-sub">Billing &amp; Cost Analysis Platform</p>
-    <hr class="login-divider"/>
+    <hr class="login-sep"/>
   </div>
 </div>
 """, unsafe_allow_html=True)
 
-    with st.form("login_form"):
-        username = st.text_input("Username", placeholder="Enter your username")
-        password = st.text_input("Password", type="password", placeholder="Enter your password")
-        submitted = st.form_submit_button("🔓  Sign In", type="primary", use_container_width=True)
+    _, col, _ = st.columns([1, 1.4, 1])
+    with col:
+        with st.form("login_form"):
+            username = st.text_input("Username", placeholder="Enter your username")
+            password = st.text_input("Password", type="password", placeholder="Enter your password")
+            submitted = st.form_submit_button("Sign In →", type="primary", use_container_width=True)
 
     if submitted:
         if username == _ADMIN_USER and password == _ADMIN_PASS:
