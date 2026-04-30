@@ -3156,148 +3156,130 @@ hr { background: linear-gradient(90deg,transparent,rgba(0,180,140,0.35),transpar
 def _page_login():
     st.markdown("""
 <style>
-/* ── Full-page background ───────────────────────────────────────────── */
 [data-testid="stAppViewContainer"] {
     background: radial-gradient(ellipse at 20% 50%, #0a2a20 0%, #060f0d 60%, #000000 100%) !important;
 }
 [data-testid="stHeader"] { background: transparent !important; }
+[data-testid="stSidebar"]       { display: none !important; }
+[data-testid="collapsedControl"]{ display: none !important; }
 
-/* ── Hide sidebar on login ──────────────────────────────────────────── */
-[data-testid="stSidebar"] { display: none !important; }
-[data-testid="collapsedControl"] { display: none !important; }
+/* Remove Streamlit's default block padding so card hugs content */
+[data-testid="stMainBlockContainer"] {
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+}
+section[data-testid="stMain"] > div { padding-top: 0 !important; }
 
-/* ── Floating particles (CSS-only) ─────────────────────────────────── */
+/* Floating particles */
 @keyframes float1 {
-  0%,100% { transform: translateY(0px) translateX(0px); opacity:0.6; }
-  50%      { transform: translateY(-40px) translateX(15px); opacity:0.2; }
+  0%,100%{ transform:translateY(0) translateX(0);   opacity:.5; }
+  50%    { transform:translateY(-35px) translateX(12px); opacity:.15; }
 }
 @keyframes float2 {
-  0%,100% { transform: translateY(0px) translateX(0px); opacity:0.4; }
-  50%      { transform: translateY(30px) translateX(-20px); opacity:0.1; }
+  0%,100%{ transform:translateY(0) translateX(0);    opacity:.35; }
+  50%    { transform:translateY(25px) translateX(-18px); opacity:.1; }
 }
 @keyframes float3 {
-  0%,100% { transform: translateY(0px) translateX(0px); opacity:0.3; }
-  33%      { transform: translateY(-20px) translateX(10px); opacity:0.6; }
-  66%      { transform: translateY(15px) translateX(-10px); opacity:0.2; }
+  0%,100%{ transform:translateY(0) translateX(0);   opacity:.25; }
+  50%    { transform:translateY(-18px) translateX(8px); opacity:.5; }
 }
 @keyframes glow-ring {
-  0%,100% { box-shadow: 0 0 0 0 rgba(0,180,140,0.5), 0 0 20px rgba(0,180,140,0.2); }
-  50%      { box-shadow: 0 0 0 10px rgba(0,180,140,0), 0 0 40px rgba(0,180,140,0.35); }
+  0%,100%{ box-shadow:0 0 0 0 rgba(0,180,140,.5),0 0 16px rgba(0,180,140,.2); }
+  50%    { box-shadow:0 0 0 9px rgba(0,180,140,0), 0 0 32px rgba(0,180,140,.35); }
 }
 @keyframes slideUp {
-  from { opacity:0; transform:translateY(40px); }
-  to   { opacity:1; transform:translateY(0); }
+  from{ opacity:0; transform:translateY(28px); }
+  to  { opacity:1; transform:translateY(0); }
 }
 @keyframes shimmer {
-  0%   { background-position: -200% center; }
-  100% { background-position: 200% center; }
+  0%  { background-position:-200% center; }
+  100%{ background-position: 200% center; }
 }
 
-.login-particles {
-  position:fixed; top:0; left:0; width:100%; height:100%;
-  pointer-events:none; overflow:hidden; z-index:0;
-}
-.particle {
-  position:absolute; border-radius:50%;
-  background: rgba(0,180,140,0.15);
-}
-.p1 { width:180px;height:180px; top:10%; left:5%;  animation:float1 8s ease-in-out infinite; }
-.p2 { width:100px;height:100px; top:60%; left:80%; animation:float2 6s ease-in-out infinite; }
-.p3 { width:60px; height:60px;  top:80%; left:15%; animation:float3 7s ease-in-out infinite; }
-.p4 { width:40px; height:40px;  top:25%; left:70%; animation:float1 9s ease-in-out infinite reverse; }
-.p5 { width:120px;height:120px; top:45%; left:90%; animation:float2 10s ease-in-out infinite; }
+.login-particles { position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:0; }
+.particle        { position:absolute;border-radius:50%;background:rgba(0,180,140,.13); }
+.p1{ width:160px;height:160px;top:8%; left:4%;  animation:float1 8s  ease-in-out infinite; }
+.p2{ width:90px; height:90px; top:58%;left:78%; animation:float2 6s  ease-in-out infinite; }
+.p3{ width:55px; height:55px; top:78%;left:14%; animation:float3 7s  ease-in-out infinite; }
+.p4{ width:38px; height:38px; top:22%;left:68%; animation:float1 9s  ease-in-out infinite reverse; }
+.p5{ width:110px;height:110px;top:42%;left:88%; animation:float2 10s ease-in-out infinite; }
 
-/* ── Card ───────────────────────────────────────────────────────────── */
-.login-outer {
+/* Outer centering — full viewport */
+.login-page {
   display:flex; justify-content:center; align-items:center;
-  min-height:92vh; position:relative; z-index:1;
+  height:100vh; position:relative; z-index:1;
 }
+
+/* The single card that wraps EVERYTHING including the form */
 .login-card {
-  width:440px;
-  background: linear-gradient(160deg, rgba(13,45,36,0.95) 0%, rgba(6,18,14,0.98) 100%);
-  border: 1px solid rgba(0,180,140,0.3);
-  border-radius: 24px;
-  padding: 48px 44px 44px;
-  box-shadow: 0 25px 80px rgba(0,0,0,0.6), 0 0 60px rgba(0,180,140,0.07), inset 0 1px 0 rgba(0,180,140,0.15);
-  animation: slideUp 0.65s cubic-bezier(0.22,1,0.36,1) both;
-  backdrop-filter: blur(20px);
+  width:380px;
+  background:linear-gradient(160deg,rgba(13,45,36,.96) 0%,rgba(6,18,14,.98) 100%);
+  border:1px solid rgba(0,180,140,.28);
+  border-radius:22px;
+  padding:32px 36px 28px;
+  box-shadow:0 20px 70px rgba(0,0,0,.55),0 0 50px rgba(0,180,140,.06),inset 0 1px 0 rgba(0,180,140,.12);
+  animation:slideUp .6s cubic-bezier(.22,1,.36,1) both;
+  backdrop-filter:blur(18px);
 }
 .login-ring {
-  width:80px; height:80px; margin:0 auto 22px;
-  border-radius:50%;
-  border: 2px solid rgba(0,180,140,0.6);
-  display:flex; align-items:center; justify-content:center;
-  font-size:2.2rem;
-  animation: glow-ring 2.5s ease-in-out infinite;
-  background: radial-gradient(circle, rgba(0,180,140,0.15) 0%, transparent 70%);
+  width:60px;height:60px;margin:0 auto 14px;border-radius:50%;
+  border:2px solid rgba(0,180,140,.6);
+  display:flex;align-items:center;justify-content:center;font-size:1.8rem;
+  animation:glow-ring 2.5s ease-in-out infinite;
+  background:radial-gradient(circle,rgba(0,180,140,.14) 0%,transparent 70%);
 }
 .login-brand {
-  background: linear-gradient(90deg, #00b48c, #00e0b0, #00b48c);
-  background-size: 200% auto;
-  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-  animation: shimmer 3s linear infinite;
-  font-size:2rem; font-weight:800; text-align:center;
-  margin:0 0 6px; letter-spacing:1.5px;
+  background:linear-gradient(90deg,#00b48c,#00e0b0,#00b48c);
+  background-size:200% auto;
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+  animation:shimmer 3s linear infinite;
+  font-size:1.65rem;font-weight:800;text-align:center;
+  margin:0 0 4px;letter-spacing:1.5px;
 }
 .login-sub {
-  color:#5aaa8a; font-size:0.8rem; text-align:center;
-  margin:0 0 28px; letter-spacing:0.5px; text-transform:uppercase;
+  color:#5aaa8a;font-size:0.72rem;text-align:center;
+  margin:0 0 18px;letter-spacing:.5px;text-transform:uppercase;
 }
-.login-sep {
-  border:none; border-top:1px solid rgba(0,180,140,0.12); margin:0 0 28px;
-}
+.login-sep { border:none;border-top:1px solid rgba(0,180,140,.12);margin:0 0 18px; }
 
-/* ── Style Streamlit form elements inside the card ──────────────────── */
+/* Style the Streamlit form that sits below the card header */
 div[data-testid="stForm"] {
-  background: transparent !important;
-  border: none !important;
-  padding: 0 !important;
+  background:transparent !important;border:none !important;padding:0 !important;
 }
 div[data-testid="stForm"] input {
-  background: rgba(0,180,140,0.06) !important;
-  border: 1px solid rgba(0,180,140,0.2) !important;
-  border-radius: 10px !important;
-  color: #d0f0e8 !important;
-  font-size: 0.95rem !important;
+  background:rgba(0,180,140,.06) !important;
+  border:1px solid rgba(0,180,140,.2) !important;
+  border-radius:9px !important;color:#d0f0e8 !important;font-size:.9rem !important;
 }
 div[data-testid="stForm"] input:focus {
-  border-color: rgba(0,180,140,0.6) !important;
-  box-shadow: 0 0 0 2px rgba(0,180,140,0.15) !important;
+  border-color:rgba(0,180,140,.6) !important;
+  box-shadow:0 0 0 2px rgba(0,180,140,.14) !important;
 }
 div[data-testid="stForm"] label {
-  color: #7ac8a8 !important;
-  font-size: 0.75rem !important;
-  letter-spacing: 0.8px !important;
-  text-transform: uppercase !important;
-  font-weight: 600 !important;
+  color:#7ac8a8 !important;font-size:.7rem !important;
+  letter-spacing:.8px !important;text-transform:uppercase !important;font-weight:600 !important;
 }
 div[data-testid="stForm"] button[kind="primaryFormSubmit"] {
-  background: linear-gradient(90deg, #00b48c, #00c89e) !important;
-  border: none !important;
-  border-radius: 10px !important;
-  font-size: 1rem !important;
-  font-weight: 700 !important;
-  letter-spacing: 0.5px !important;
-  height: 48px !important;
-  margin-top: 8px !important;
-  transition: all 0.2s ease !important;
+  background:linear-gradient(90deg,#00b48c,#00c89e) !important;
+  border:none !important;border-radius:9px !important;
+  font-size:.95rem !important;font-weight:700 !important;
+  height:44px !important;margin-top:6px !important;
 }
 div[data-testid="stForm"] button[kind="primaryFormSubmit"]:hover {
-  background: linear-gradient(90deg, #00c89e, #00e0b0) !important;
-  transform: translateY(-1px) !important;
-  box-shadow: 0 8px 24px rgba(0,180,140,0.35) !important;
+  background:linear-gradient(90deg,#00c89e,#00e0b0) !important;
+  transform:translateY(-1px) !important;
+  box-shadow:0 7px 20px rgba(0,180,140,.32) !important;
 }
+/* Tighten vertical gaps inside the form */
+div[data-testid="stForm"] .stTextInput { margin-bottom:4px !important; }
 </style>
 
 <div class="login-particles">
-  <div class="particle p1"></div>
-  <div class="particle p2"></div>
-  <div class="particle p3"></div>
-  <div class="particle p4"></div>
+  <div class="particle p1"></div><div class="particle p2"></div>
+  <div class="particle p3"></div><div class="particle p4"></div>
   <div class="particle p5"></div>
 </div>
-
-<div class="login-outer">
+<div class="login-page">
   <div class="login-card">
     <div class="login-ring">🔐</div>
     <p class="login-brand">TalentRupt</p>
@@ -3307,11 +3289,12 @@ div[data-testid="stForm"] button[kind="primaryFormSubmit"]:hover {
 </div>
 """, unsafe_allow_html=True)
 
-    _, col, _ = st.columns([1, 1.4, 1])
+    # Narrow centered column so inputs aren't full-width
+    _, col, _ = st.columns([2, 1.4, 2])
     with col:
         with st.form("login_form"):
-            username = st.text_input("Username", placeholder="Enter your username")
-            password = st.text_input("Password", type="password", placeholder="Enter your password")
+            username = st.text_input("Username", placeholder="Enter username")
+            password = st.text_input("Password", type="password", placeholder="Enter password")
             submitted = st.form_submit_button("Sign In →", type="primary", use_container_width=True)
 
     if submitted:
