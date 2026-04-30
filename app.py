@@ -1439,7 +1439,7 @@ def page_employee_details(data):
         styled = (
             view_with_total.style
             .format(base_fmt)
-            .applymap(_color_margin, subset=gm_cols)
+            .map(_color_margin, subset=gm_cols)
             .apply(_style_total_row, axis=1)
         )
         st.dataframe(styled, use_container_width=True, height=510)
