@@ -3154,75 +3154,58 @@ hr { background: linear-gradient(90deg,transparent,rgba(0,180,140,0.35),transpar
 
 
 def _page_login():
+    # ── Global styles + particles (no card here — card is the column) ──────────
     st.markdown("""
 <style>
 [data-testid="stAppViewContainer"] {
-    background: radial-gradient(ellipse at 20% 50%, #0a2a20 0%, #060f0d 60%, #000000 100%) !important;
+  background: radial-gradient(ellipse at 20% 50%, #0a2a20 0%, #060f0d 60%, #000 100%) !important;
 }
-[data-testid="stHeader"] { background: transparent !important; }
-[data-testid="stSidebar"]       { display: none !important; }
-[data-testid="collapsedControl"]{ display: none !important; }
+[data-testid="stHeader"]          { background: transparent !important; }
+[data-testid="stSidebar"]         { display: none !important; }
+[data-testid="collapsedControl"]  { display: none !important; }
 
-/* Remove Streamlit's default block padding so card hugs content */
-[data-testid="stMainBlockContainer"] {
-    padding-top: 0 !important;
-    padding-bottom: 0 !important;
-}
-section[data-testid="stMain"] > div { padding-top: 0 !important; }
+/* Remove top padding so content sits in true centre */
+[data-testid="stMainBlockContainer"] { padding-top:0 !important; padding-bottom:0 !important; }
+section[data-testid="stMain"] > div  { padding-top:0 !important; }
 
-/* Floating particles */
-@keyframes float1 {
-  0%,100%{ transform:translateY(0) translateX(0);   opacity:.5; }
-  50%    { transform:translateY(-35px) translateX(12px); opacity:.15; }
-}
-@keyframes float2 {
-  0%,100%{ transform:translateY(0) translateX(0);    opacity:.35; }
-  50%    { transform:translateY(25px) translateX(-18px); opacity:.1; }
-}
-@keyframes float3 {
-  0%,100%{ transform:translateY(0) translateX(0);   opacity:.25; }
-  50%    { transform:translateY(-18px) translateX(8px); opacity:.5; }
-}
-@keyframes glow-ring {
-  0%,100%{ box-shadow:0 0 0 0 rgba(0,180,140,.5),0 0 16px rgba(0,180,140,.2); }
-  50%    { box-shadow:0 0 0 9px rgba(0,180,140,0), 0 0 32px rgba(0,180,140,.35); }
-}
-@keyframes slideUp {
-  from{ opacity:0; transform:translateY(28px); }
-  to  { opacity:1; transform:translateY(0); }
-}
-@keyframes shimmer {
-  0%  { background-position:-200% center; }
-  100%{ background-position: 200% center; }
+/* Vertical centre the whole column row */
+[data-testid="stHorizontalBlock"] {
+  align-items: center !important;
+  min-height: 100vh !important;
 }
 
-.login-particles { position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:0; }
-.particle        { position:absolute;border-radius:50%;background:rgba(0,180,140,.13); }
-.p1{ width:160px;height:160px;top:8%; left:4%;  animation:float1 8s  ease-in-out infinite; }
-.p2{ width:90px; height:90px; top:58%;left:78%; animation:float2 6s  ease-in-out infinite; }
-.p3{ width:55px; height:55px; top:78%;left:14%; animation:float3 7s  ease-in-out infinite; }
-.p4{ width:38px; height:38px; top:22%;left:68%; animation:float1 9s  ease-in-out infinite reverse; }
-.p5{ width:110px;height:110px;top:42%;left:88%; animation:float2 10s ease-in-out infinite; }
-
-/* Outer centering — full viewport */
-.login-page {
-  display:flex; justify-content:center; align-items:center;
-  height:100vh; position:relative; z-index:1;
+/* ── Style the middle column AS the login card ── */
+[data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:nth-child(2) {
+  background: linear-gradient(160deg, rgba(13,45,36,.97) 0%, rgba(6,18,14,.99) 100%) !important;
+  border: 1px solid rgba(0,180,140,.28) !important;
+  border-radius: 22px !important;
+  padding: 36px 32px 32px !important;
+  box-shadow: 0 20px 70px rgba(0,0,0,.55), 0 0 50px rgba(0,180,140,.07),
+              inset 0 1px 0 rgba(0,180,140,.12) !important;
+  animation: slideUp .6s cubic-bezier(.22,1,.36,1) both !important;
+  backdrop-filter: blur(18px) !important;
 }
 
-/* The single card that wraps EVERYTHING including the form */
-.login-card {
-  width:380px;
-  background:linear-gradient(160deg,rgba(13,45,36,.96) 0%,rgba(6,18,14,.98) 100%);
-  border:1px solid rgba(0,180,140,.28);
-  border-radius:22px;
-  padding:32px 36px 28px;
-  box-shadow:0 20px 70px rgba(0,0,0,.55),0 0 50px rgba(0,180,140,.06),inset 0 1px 0 rgba(0,180,140,.12);
-  animation:slideUp .6s cubic-bezier(.22,1,.36,1) both;
-  backdrop-filter:blur(18px);
-}
+/* ── Animations ── */
+@keyframes float1  { 0%,100%{transform:translateY(0) translateX(0);opacity:.5}   50%{transform:translateY(-35px) translateX(12px);opacity:.15} }
+@keyframes float2  { 0%,100%{transform:translateY(0) translateX(0);opacity:.35}  50%{transform:translateY(25px) translateX(-18px);opacity:.1} }
+@keyframes float3  { 0%,100%{transform:translateY(0) translateX(0);opacity:.25}  50%{transform:translateY(-18px) translateX(8px);opacity:.5} }
+@keyframes glow-ring { 0%,100%{box-shadow:0 0 0 0 rgba(0,180,140,.5),0 0 16px rgba(0,180,140,.2)} 50%{box-shadow:0 0 0 9px rgba(0,180,140,0),0 0 32px rgba(0,180,140,.35)} }
+@keyframes slideUp { from{opacity:0;transform:translateY(28px)} to{opacity:1;transform:translateY(0)} }
+@keyframes shimmer { 0%{background-position:-200% center} 100%{background-position:200% center} }
+
+/* ── Floating particles ── */
+.lp { position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:0; }
+.lp span { position:absolute;border-radius:50%;background:rgba(0,180,140,.13); }
+.lp .a{ width:160px;height:160px;top:8%; left:4%;  animation:float1 8s  ease-in-out infinite; }
+.lp .b{ width:90px; height:90px; top:58%;left:78%; animation:float2 6s  ease-in-out infinite; }
+.lp .c{ width:55px; height:55px; top:78%;left:14%; animation:float3 7s  ease-in-out infinite; }
+.lp .d{ width:38px; height:38px; top:22%;left:68%; animation:float1 9s  ease-in-out infinite reverse; }
+.lp .e{ width:110px;height:110px;top:42%;left:88%; animation:float2 10s ease-in-out infinite; }
+
+/* ── Header elements inside column ── */
 .login-ring {
-  width:60px;height:60px;margin:0 auto 14px;border-radius:50%;
+  width:60px;height:60px;margin:0 auto 12px;border-radius:50%;
   border:2px solid rgba(0,180,140,.6);
   display:flex;align-items:center;justify-content:center;font-size:1.8rem;
   animation:glow-ring 2.5s ease-in-out infinite;
@@ -3233,27 +3216,23 @@ section[data-testid="stMain"] > div { padding-top: 0 !important; }
   background-size:200% auto;
   -webkit-background-clip:text;-webkit-text-fill-color:transparent;
   animation:shimmer 3s linear infinite;
-  font-size:1.65rem;font-weight:800;text-align:center;
-  margin:0 0 4px;letter-spacing:1.5px;
+  font-size:1.6rem;font-weight:800;text-align:center;margin:0 0 4px;letter-spacing:1.5px;
 }
 .login-sub {
-  color:#5aaa8a;font-size:0.72rem;text-align:center;
-  margin:0 0 18px;letter-spacing:.5px;text-transform:uppercase;
+  color:#5aaa8a;font-size:.7rem;text-align:center;
+  margin:0 0 16px;letter-spacing:.5px;text-transform:uppercase;
 }
-.login-sep { border:none;border-top:1px solid rgba(0,180,140,.12);margin:0 0 18px; }
+.login-sep { border:none;border-top:1px solid rgba(0,180,140,.12);margin:0 0 16px; }
 
-/* Style the Streamlit form that sits below the card header */
-div[data-testid="stForm"] {
-  background:transparent !important;border:none !important;padding:0 !important;
-}
+/* ── Form inputs & button ── */
+div[data-testid="stForm"] { background:transparent !important;border:none !important;padding:0 !important; }
 div[data-testid="stForm"] input {
   background:rgba(0,180,140,.06) !important;
   border:1px solid rgba(0,180,140,.2) !important;
   border-radius:9px !important;color:#d0f0e8 !important;font-size:.9rem !important;
 }
 div[data-testid="stForm"] input:focus {
-  border-color:rgba(0,180,140,.6) !important;
-  box-shadow:0 0 0 2px rgba(0,180,140,.14) !important;
+  border-color:rgba(0,180,140,.6) !important;box-shadow:0 0 0 2px rgba(0,180,140,.14) !important;
 }
 div[data-testid="stForm"] label {
   color:#7ac8a8 !important;font-size:.7rem !important;
@@ -3262,36 +3241,26 @@ div[data-testid="stForm"] label {
 div[data-testid="stForm"] button[kind="primaryFormSubmit"] {
   background:linear-gradient(90deg,#00b48c,#00c89e) !important;
   border:none !important;border-radius:9px !important;
-  font-size:.95rem !important;font-weight:700 !important;
-  height:44px !important;margin-top:6px !important;
+  font-size:.95rem !important;font-weight:700 !important;height:44px !important;margin-top:6px !important;
 }
 div[data-testid="stForm"] button[kind="primaryFormSubmit"]:hover {
   background:linear-gradient(90deg,#00c89e,#00e0b0) !important;
-  transform:translateY(-1px) !important;
-  box-shadow:0 7px 20px rgba(0,180,140,.32) !important;
+  transform:translateY(-1px) !important;box-shadow:0 7px 20px rgba(0,180,140,.32) !important;
 }
-/* Tighten vertical gaps inside the form */
-div[data-testid="stForm"] .stTextInput { margin-bottom:4px !important; }
+div[data-testid="stForm"] .stTextInput { margin-bottom:2px !important; }
 </style>
-
-<div class="login-particles">
-  <div class="particle p1"></div><div class="particle p2"></div>
-  <div class="particle p3"></div><div class="particle p4"></div>
-  <div class="particle p5"></div>
-</div>
-<div class="login-page">
-  <div class="login-card">
-    <div class="login-ring">🔐</div>
-    <p class="login-brand">TalentRupt</p>
-    <p class="login-sub">Billing &amp; Cost Analysis Platform</p>
-    <hr class="login-sep"/>
-  </div>
-</div>
+<div class="lp"><span class="a"></span><span class="b"></span><span class="c"></span><span class="d"></span><span class="e"></span></div>
 """, unsafe_allow_html=True)
 
-    # Narrow centered column so inputs aren't full-width
-    _, col, _ = st.columns([2, 1.4, 2])
+    # ── Card = the middle column; header HTML + form both live inside it ────────
+    _, col, _ = st.columns([2, 1.2, 2])
     with col:
+        st.markdown("""
+<div class="login-ring">🔐</div>
+<p class="login-brand">TalentRupt</p>
+<p class="login-sub">Billing &amp; Cost Analysis Platform</p>
+<hr class="login-sep"/>
+""", unsafe_allow_html=True)
         with st.form("login_form"):
             username = st.text_input("Username", placeholder="Enter username")
             password = st.text_input("Password", type="password", placeholder="Enter password")
