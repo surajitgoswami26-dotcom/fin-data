@@ -2320,6 +2320,15 @@ def _page_sales_dept_data(data):
             if "Client Name" in mdf.columns and "Billing ($)" in mdf.columns:
                 mask = mdf["Client Name"].isin(brett_clients)
                 revenue = float(mdf.loc[mask, "Billing ($)"].sum())
+        if revenue == 0.0 and data_key == "Apr 2026":
+            # Temporary: mirror Mar 2026 until real Apr data is uploaded
+            fallback_key = "Mar 2026"
+            fb_src = data if fallback_key in data else revenue_only
+            if fallback_key in fb_src and brett_clients:
+                mdf = fb_src[fallback_key]
+                if "Client Name" in mdf.columns and "Billing ($)" in mdf.columns:
+                    mask = mdf["Client Name"].isin(brett_clients)
+                    revenue = float(mdf.loc[mask, "Billing ($)"].sum())
         net = revenue - cost
         perf_rows.append({
             "Month":           mo,
