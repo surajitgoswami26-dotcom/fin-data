@@ -22,8 +22,9 @@ COST_COLS = [
 ]
 EXCEL_PATH        = os.path.expanduser("~/Downloads/TR Billing V_S Cost Analysis -Feb 2026.xlsx")
 BILLING_SHEETS    = {
-    "Clients-Jan": "Jan 2026",
-    "Clients-Feb": "Feb 2026",
+    "Clients-Jan":      "Jan 2026",
+    "Clients-Feb":      "Feb 2026",
+    "Clients- March26": "Mar 2026",
 }
 _APP_DIR  = os.path.dirname(os.path.abspath(__file__))
 # DATA_DIR: writable directory for all runtime data.
@@ -45,15 +46,27 @@ UPLOADS_DIR    = os.path.join(_DATA_DIR, "uploads")
 
 def _get_active_excel():
     """Return path to the most recently uploaded Excel (used for costs/salaries/expenses).
-    Falls back to EXCEL_PATH if no upload has happened yet."""
+    Falls back to any xlsx found in uploads/, then EXCEL_PATH."""
     try:
         if os.path.exists(CONFIG_PATH):
             with open(CONFIG_PATH) as f:
                 p = json.load(f).get("active_excel_path", "")
-                if p and os.path.exists(p):
-                    return p
+            if p and os.path.exists(p):
+                return p
+            # Stored path may be absolute from a different machine; try relative to app dir
+            if p:
+                rel = os.path.join(_APP_DIR, os.path.basename(p))
+                if os.path.exists(rel):
+                    return rel
+                rel2 = os.path.join(_APP_DIR, "uploads", os.path.basename(p))
+                if os.path.exists(rel2):
+                    return rel2
     except Exception:
         pass
+    # Auto-discover: pick the first xlsx in uploads/
+    import glob as _glob
+    for candidate in _glob.glob(os.path.join(_APP_DIR, "uploads", "*.xlsx")):
+        return candidate
     return EXCEL_PATH
 
 def _save_active_excel(path):
@@ -325,7 +338,7 @@ def load_excel(path, _bust=0):
 
 def get_all_data():
     bust    = st.session_state.get("cache_bust", 0)
-    sheets  = load_excel(EXCEL_PATH, _bust=bust)
+    sheets  = load_excel(_get_active_excel(), _bust=bust)
     sheets  = {k: v.copy() for k, v in sheets.items()}
 
     cost_totals_usd = get_actual_cost_totals_usd(bust=bust)
