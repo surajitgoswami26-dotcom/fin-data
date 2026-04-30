@@ -23,7 +23,7 @@ COST_COLS = [
 EXCEL_PATH        = os.path.expanduser("~/Downloads/TR Billing V_S Cost Analysis -Feb 2026.xlsx")
 BILLING_SHEETS    = {
     "Clients-Jan":      "Jan 2026",
-    "Clients-Feb":      "Feb 2026",
+    "Feb-25":           "Feb 2026",
     "Clients- March26": "Mar 2026",
 }
 _APP_DIR  = os.path.dirname(os.path.abspath(__file__))
@@ -347,17 +347,13 @@ def get_all_data():
     fx_rates        = load_fx_rates()
 
     # ── Merge any manually added custom records ────────────────────────────────
+    # Excel (BILLING_SHEETS) is authoritative — skip data.json for those months
+    excel_months = set(sheets.keys())
     custom = load_json_data()
     for month, rows in custom.items():
-        df_new = pd.DataFrame(rows)
-        if month in sheets:
-            combined = pd.concat([sheets[month], df_new], ignore_index=True)
-            dedup_cols = [c for c in ("Client Name", "Seat Name") if c in combined.columns]
-            if dedup_cols:
-                combined = combined.drop_duplicates(subset=dedup_cols, keep="first")
-            sheets[month] = combined.reset_index(drop=True)
-        else:
-            sheets[month] = df_new
+        if month in excel_months:
+            continue
+        sheets[month] = pd.DataFrame(rows)
 
     # ── Apply saved P&L overrides (Billing corrections + removals) ───────────
     overrides = load_overrides()
