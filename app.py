@@ -351,7 +351,11 @@ def get_all_data():
     for month, rows in custom.items():
         df_new = pd.DataFrame(rows)
         if month in sheets:
-            sheets[month] = pd.concat([sheets[month], df_new], ignore_index=True)
+            combined = pd.concat([sheets[month], df_new], ignore_index=True)
+            dedup_cols = [c for c in ("Client Name", "Seat Name") if c in combined.columns]
+            if dedup_cols:
+                combined = combined.drop_duplicates(subset=dedup_cols, keep="first")
+            sheets[month] = combined.reset_index(drop=True)
         else:
             sheets[month] = df_new
 
