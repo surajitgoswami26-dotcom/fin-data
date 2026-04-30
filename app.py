@@ -103,6 +103,7 @@ def _find_latest_expense_sheet(xl_names):
     return None
 
 OVERRIDE_PATH  = os.path.join(_DATA_DIR, "pnl_overrides.json")
+SALES_PATH     = os.path.join(_DATA_DIR, "sales_persons.json")
 
 # ── Data persistence ─────────────────────────────────────────────────────────
 
@@ -159,6 +160,16 @@ def save_fx_rates(rates):
 
 def get_fx_rate(month):
     return load_fx_rates().get(month, _INR_RATE)
+
+def load_sales_persons():
+    if os.path.exists(SALES_PATH):
+        with open(SALES_PATH) as f:
+            return json.load(f)
+    return {}
+
+def save_sales_persons(data):
+    with open(SALES_PATH, "w") as f:
+        json.dump(data, f, indent=2)
 
 _WANTED = [
     "Sr. No.", "Client Name", "Seat Name", "Billing ($)", "Billing (Rs.)",
@@ -329,13 +340,20 @@ def get_all_data():
         else:
             sheets[month] = df_new
 
-    # ── Apply saved P&L overrides (Billing corrections) ──────────────────────
+    # ── Apply saved P&L overrides (Billing corrections + removals) ───────────
     overrides = load_overrides()
     for month, emp_overrides in overrides.items():
         if month not in sheets:
             continue
         df = sheets[month]
+        # Remove seats explicitly moved off billing
+        remove_list = emp_overrides.get("_remove_from_billing", [])
+        if remove_list:
+            df = df[~df["Seat Name"].isin(remove_list)].reset_index(drop=True)
+        # Apply billing amount overrides
         for emp, vals in emp_overrides.items():
+            if emp.startswith("_"):
+                continue
             mask = df["Seat Name"] == emp
             if "Billing ($)" in vals:
                 df.loc[mask, "Billing ($)"] = vals["Billing ($)"]
@@ -687,39 +705,96 @@ _INR_RATE = 85  # Rs per $
 
 
 @st.cache_data(ttl=0)
-def _load_employee_sheet(path, _bust=0):
-    """Return the Employee Summary DataFrame (Category, Name, Amount).
-    Picks the most recent month's sheet using flexible name matching."""
+def _load_employee_sheet(path, month=None, _bust=0):
+    """Return the Employee Summary DataFrame for `month` (e.g. 'Jan 2026').
+    If month is given, tries the matching sheet first, then falls back to
+    the most recent sheet available."""
     try:
         xl_names = pd.ExcelFile(path).sheet_names
-        sheet = None
+
+        def _read_sheet(s):
+            df = pd.read_excel(path, sheet_name=s)
+            # Category = first col, Name = second col (header names vary across months)
+            cat_col  = df.columns[0]
+            name_col = df.columns[1]
+            # Amount: prefer column whose header contains "$", else fall back to last col
+            # This handles: 3-col (March: Amount $) and 4-col (Jan/Feb: Amount INR | Amount $)
+            amount_col = next((c for c in df.columns if "$" in str(c)), df.columns[-1])
+            return pd.DataFrame({
+                "Category": df[cat_col].astype(str).str.strip(),
+                "Name":     df[name_col].astype(str).str.strip(),
+                "Amount":   pd.to_numeric(df[amount_col], errors="coerce").fillna(0),
+            })
+
+        # Try month-specific sheet first
+        if month:
+            abbr = month.split()[0][:3]
+            s = _find_sheet(xl_names, ["employee summary", "employee summery"], abbr)
+            if s:
+                return _read_sheet(s)
+
+        # Fall back to most recent available
         for abbr in _ALL_MONTH_ABBRS:
-            sheet = _find_sheet(xl_names, ["employee summary", "employee summery"], abbr)
-            if sheet:
-                break
-        if sheet is None:
-            return pd.DataFrame(columns=["Category", "Name", "Amount"])
-        df = pd.read_excel(path, sheet_name=sheet)
-        df.columns = ["Category", "Name", "Amount"]
-        df["Category"] = df["Category"].astype(str).str.strip()
-        df["Amount"]   = pd.to_numeric(df["Amount"], errors="coerce").fillna(0)
-        return df
+            s = _find_sheet(xl_names, ["employee summary", "employee summery"], abbr)
+            if s:
+                return _read_sheet(s)
+
+        return pd.DataFrame(columns=["Category", "Name", "Amount"])
     except Exception:
         return pd.DataFrame(columns=["Category", "Name", "Amount"])
 
 
-def load_billing_salaries(path, _bust=0):
-    """Load billing employee $ salaries (Payroll - Billing) from the Employee Summary sheet."""
-    df = _load_employee_sheet(path, _bust=_bust)
-    bdf = df[df["Category"] == "Payroll - Billing"]
+def load_billing_salaries(path, month=None, _bust=0):
+    """Load billing employee $ salaries from the Employee Summary sheet for `month`.
+
+    Excludes any employees listed in _remove_from_billing for this month.
+    """
+    df = _load_employee_sheet(path, month=month, _bust=_bust)
+    bdf = df[df["Category"] == "Payroll - Billing"].copy()
+    if month:
+        removed = load_overrides().get(month, {}).get("_remove_from_billing", [])
+        if removed:
+            removed_lower = [n.strip().lower() for n in removed]
+            bdf = bdf[~bdf["Name"].str.strip().str.lower().isin(removed_lower)]
     return {str(r["Name"]).strip().lower(): float(r["Amount"]) for _, r in bdf.iterrows()}
 
 
-def load_bench_salaries(path, _bust=0):
-    """Load bench employee $ salaries (Payroll - Non Bill) from the Employee Summary sheet."""
-    df = _load_employee_sheet(path, _bust=_bust)
-    bdf = df[df["Category"] == "Payroll - Non Bill"]
-    return sum(float(r["Amount"]) for _, r in bdf.iterrows())
+def load_bench_employees(path, month=None, _bust=0):
+    """Return a DataFrame of individual bench (Payroll - Non Bill) employees for `month`.
+
+    Merges Excel data with any 'Bench ($)' overrides from pnl_overrides.json:
+    overrides update existing rows or add new ones.
+    """
+    df = _load_employee_sheet(path, month=month, _bust=_bust)
+    bdf = df[df["Category"] == "Payroll - Non Bill"].copy()
+    bdf = bdf[["Name", "Amount"]].rename(columns={"Amount": "Payroll ($)"})
+    bdf = bdf[~bdf["Name"].str.lower().isin(["nan", "none", "", "total"])].reset_index(drop=True)
+
+    if month:
+        bench_ovr = {
+            name: vals["Bench ($)"]
+            for name, vals in load_overrides().get(month, {}).items()
+            if "Bench ($)" in vals
+        }
+        if bench_ovr:
+            for name, amt in bench_ovr.items():
+                mask = bdf["Name"].str.strip().str.lower() == name.strip().lower()
+                if mask.any():
+                    bdf.loc[mask, "Payroll ($)"] = amt
+                else:
+                    bdf = pd.concat(
+                        [bdf, pd.DataFrame({"Name": [name], "Payroll ($)": [float(amt)]})],
+                        ignore_index=True,
+                    )
+
+    bdf = bdf.sort_values("Name").reset_index(drop=True)
+    bdf.index = range(1, len(bdf) + 1)
+    return bdf
+
+
+def load_bench_salaries(path, month=None, _bust=0):
+    """Return total bench payroll $ for `month`, using overrides when available."""
+    return load_bench_employees(path, month=month, _bust=_bust)["Payroll ($)"].sum()
 
 
 def _match_salary(seat_name, salary_lookup):
@@ -863,7 +938,7 @@ def page_detail(data):
 
     # Load salary lookup and overrides
     bust          = st.session_state.get("bust", 0)
-    salary_lookup = load_billing_salaries(_get_active_excel(), _bust=bust)
+    salary_lookup = load_billing_salaries(_get_active_excel(), month=sel_month, _bust=bust)
     all_overrides = load_overrides()
     month_ovr     = all_overrides.get(sel_month, {})
 
@@ -1041,8 +1116,10 @@ def page_billing_clients(data):
     sel_month = st.selectbox("Select Month", months, index=len(months) - 1, key="bc_month")
     fx_rate   = get_fx_rate(sel_month)
 
+    sales_map = load_sales_persons()
     unique_df = data[sel_month][["Client Name", "Seat Name", "Billing ($)"]].copy()
     unique_df["Billing (₹)"] = (unique_df["Billing ($)"] * fx_rate).round(0)
+    unique_df["Sales Person"] = unique_df["Client Name"].map(lambda c: sales_map.get(c, ""))
 
     # ── Filters ──────────────────────────────────────────────────────────────
     col_f1, col_f2 = st.columns(2)
@@ -1071,7 +1148,7 @@ def page_billing_clients(data):
     with tab1:
         st.subheader("All Recruiters & Bill Rates")
         detail = (
-            view[["Client Name", "Seat Name", "Billing ($)", "Billing (₹)"]]
+            view[["Client Name", "Sales Person", "Seat Name", "Billing ($)", "Billing (₹)"]]
             .rename(columns={
                 "Seat Name":   "Recruiter",
                 "Billing ($)": "Bill Rate ($)",
@@ -1080,27 +1157,35 @@ def page_billing_clients(data):
             .sort_values(["Client Name", "Recruiter"])
             .reset_index(drop=True)
         )
-        total_row = pd.DataFrame([{
-            "Client Name":  "TOTAL",
-            "Recruiter":    f"{len(detail)} recruiters",
-            "Bill Rate ($)": detail["Bill Rate ($)"].sum(),
-            "Bill Rate (₹)": detail["Bill Rate (₹)"].sum(),
-        }])
-        detail_display = pd.concat([detail, total_row], ignore_index=True)
-        detail_display.index = range(1, len(detail_display) + 1)
-        total_idx = len(detail_display)
 
-        def _bold_total_row(row):
-            style = "font-weight: bold; background-color: #1a1a2e; color: white"
-            return [style if row.name == total_idx else "" for _ in row]
-
-        styled = (
-            detail_display.style
-            .apply(_bold_total_row, axis=1)
-            .format({"Bill Rate ($)": "${:,.0f}", "Bill Rate (₹)": "₹{:,.0f}"})
+        edited = st.data_editor(
+            detail,
+            use_container_width=True,
+            height=500,
+            hide_index=True,
+            column_config={
+                "Client Name":  st.column_config.TextColumn("Client Name",  disabled=True),
+                "Sales Person": st.column_config.TextColumn("Sales Person", help="Click to assign or edit"),
+                "Recruiter":    st.column_config.TextColumn("Recruiter",    disabled=True),
+                "Bill Rate ($)":st.column_config.NumberColumn("Bill Rate ($)", format="$%.0f", disabled=True),
+                "Bill Rate (₹)":st.column_config.NumberColumn("Bill Rate (₹)", format="₹%.0f", disabled=True),
+            },
+            key="bc_detail_editor",
         )
-        st.dataframe(styled, use_container_width=True, height=500)
-        st.caption(f"₹ column uses wire rate: $1 = ₹{fx_rate:.0f} ({sel_month})")
+
+        # Persist any Sales Person changes
+        changed = edited[["Client Name", "Sales Person"]].drop_duplicates("Client Name")
+        new_map = {r["Client Name"]: r["Sales Person"] for _, r in changed.iterrows() if r["Client Name"]}
+        if new_map != {k: sales_map.get(k, "") for k in new_map}:
+            sales_map.update({k: v for k, v in new_map.items() if v != sales_map.get(k, "")})
+            save_sales_persons(sales_map)
+
+        total_billing  = detail["Bill Rate ($)"].sum()
+        total_billing_inr = detail["Bill Rate (₹)"].sum()
+        st.caption(
+            f"₹ column uses wire rate: $1 = ₹{fx_rate:.0f} ({sel_month})  ·  "
+            f"**Total: ${total_billing:,.0f}  /  ₹{total_billing_inr:,.0f}**"
+        )
 
         csv = detail.to_csv(index=False).encode()
         st.download_button("Download CSV", csv, "billing_clients.csv", "text/csv")
@@ -1188,11 +1273,13 @@ def page_employee_details(data):
 
     emp_month     = st.selectbox("Select Month", months, index=len(months) - 1, key="ed_month")
     bust          = st.session_state.get("cache_bust", 0)
-    salary_lookup = load_billing_salaries(_get_active_excel(), _bust=bust)
+    salary_lookup = load_billing_salaries(_get_active_excel(), month=emp_month, _bust=bust)
+    bench_df      = load_bench_employees(_get_active_excel(), month=emp_month, _bust=bust)
 
     # Build billed employee list from the selected month only
+    _month_df = data[emp_month][["Client Name", "Seat Name", "Billing ($)"]].copy()
     billed_df = (
-        data[emp_month][["Client Name", "Seat Name"]].copy()
+        _month_df
         .rename(columns={"Seat Name": "Name"})
         .sort_values(["Client Name", "Name"])
         .reset_index(drop=True)
@@ -1203,32 +1290,89 @@ def page_employee_details(data):
     # Apply salary overrides from pnl_overrides.json for this month
     _emp_ovr = load_overrides().get(emp_month, {})
     for _emp, _vals in _emp_ovr.items():
+        if _emp.startswith("_"):
+            continue
         if "Salary ($)" in _vals:
             _mask = billed_df["Name"] == _emp
             if _mask.any():
                 billed_df.loc[_mask, "Payroll ($)"] = _vals["Salary ($)"]
 
-    total_non_billing  = sum(len(v) for v in emp_data.values())
-    total_nb_salary    = sum(
+    billed_df["Gross Margin ($)"] = billed_df["Billing ($)"] - billed_df["Payroll ($)"]
+
+    total_non_billing   = sum(len(v) for v in emp_data.values())
+    total_nb_salary     = sum(
         r.get("Salary ($)", 0) or 0
         for dept_list in emp_data.values()
         for r in dept_list
     )
-    total_bill_payroll = billed_df["Payroll ($)"].sum()
+    total_bill_payroll  = billed_df["Payroll ($)"].sum()
+    total_billing       = billed_df["Billing ($)"].sum()
+    total_gross_margin  = billed_df["Gross Margin ($)"].sum()
+    total_bench_payroll = bench_df["Payroll ($)"].sum() if not bench_df.empty else 0.0
+    bench_pct           = (len(bench_df) / len(billed_df) * 100) if len(billed_df) > 0 else 0.0
 
-    # ── Top KPIs ──────────────────────────────────────────────────────────────
-    k1, k2, k3, k4 = st.columns(4)
-    k1.metric("Billed Employees",     len(billed_df))
-    k2.metric("Non-Billing Staff",    total_non_billing)
-    k3.metric("Billing Payroll",     _disp(total_bill_payroll, emp_month, dec=2))
-    k4.metric("Non-Billing Payroll", _disp(total_nb_salary,    emp_month, dec=2))
+    _ED_TABS = ["🟢 Billed Employees", "🟡 Bench Employees", "🔵 Non-Billing Employees"]
+
+    # ── Top KPIs (all st.metric for visual consistency) ───────────────────────
+    k1, k2, k3, k4, k5, k6, k7 = st.columns(7)
+    k1.metric("Billed Employees",  len(billed_df))
+    k2.metric("Bench Employees",   len(bench_df))
+    k3.metric("Bench %",           f"{bench_pct:.1f}%")
+    k4.metric("Non-Billing Staff", total_non_billing)
+    k5.metric("Total Billing",     _disp(total_billing,      emp_month, dec=2))
+    k6.metric("Billing Payroll",   _disp(total_bill_payroll, emp_month, dec=2))
+    k7.metric("Gross Margin",      _disp(total_gross_margin, emp_month, dec=2))
+
+    # JS: clicking first 4 metric cards triggers the radio selector below
+    import streamlit.components.v1 as _components
+    _components.html("""
+<script>
+(function() {
+    var NAV = {
+        'BILLED EMPLOYEES': 0,
+        'BENCH EMPLOYEES':  1,
+        'BENCH %':          1,
+        'NON-BILLING STAFF':2
+    };
+    function setup() {
+        var labels = parent.document.querySelectorAll('[data-testid="stMetricLabel"]');
+        labels.forEach(function(lbl) {
+            var key = lbl.innerText.trim().toUpperCase();
+            if (!(key in NAV)) return;
+            var card = lbl.closest('[data-testid="metric-container"]');
+            if (!card || card._navAttached) return;
+            card._navAttached = true;
+            card.classList.add('kpi-nav-card');
+            card.style.cursor = 'pointer';
+            card.addEventListener('click', function() {
+                var radios = parent.document.querySelectorAll(
+                    '[data-testid="stRadio"] input[type="radio"]');
+                if (radios[NAV[key]]) radios[NAV[key]].click();
+            });
+        });
+    }
+    setTimeout(setup, 200);
+    setTimeout(setup, 800);
+    new MutationObserver(setup).observe(parent.document.body,
+        {childList: true, subtree: true});
+})();
+</script>
+""", height=0)
 
     st.divider()
 
-    billed_tab, nb_tab = st.tabs(["🟢 Billed Employees", "🔵 Non-Billing Employees"])
+    active_section = st.radio(
+        "Section",
+        _ED_TABS,
+        horizontal=True,
+        label_visibility="collapsed",
+        key="ed_section",
+    )
+
+    st.markdown('<div style="height:10px"></div>', unsafe_allow_html=True)
 
     # ── Billed Employees ──────────────────────────────────────────────────────
-    with billed_tab:
+    if active_section == _ED_TABS[0]:
         col_f1, col_f2 = st.columns(2)
         client_opts = ["All Clients"] + sorted(billed_df["Client Name"].dropna().unique().tolist())
         sel_client  = col_f1.selectbox("Filter by Client", client_opts, key="emp_client")
@@ -1242,20 +1386,88 @@ def page_employee_details(data):
 
         view = view.reset_index(drop=True)
         view.index = range(1, len(view) + 1)
+
+        base_fmt = {
+            "Billing ($)":      "${:,.2f}",
+            "Payroll ($)":      "${:,.2f}",
+            "Gross Margin ($)": "${:,.2f}",
+        }
         if st.session_state.get("show_inr", False):
             fx_rate = get_fx_rate(emp_month)
-            view["Payroll (₹)"] = (view["Payroll ($)"] * fx_rate).round(0)
-            fmt = {"Payroll ($)": "${:,.2f}", "Payroll (₹)": "₹{:,.0f}"}
-        else:
-            fmt = {"Payroll ($)": "${:,.2f}"}
-        styled = view.style.format(fmt)
-        st.dataframe(styled, use_container_width=True, height=480)
+            view["Billing (₹)"]      = (view["Billing ($)"]      * fx_rate).round(0)
+            view["Payroll (₹)"]      = (view["Payroll ($)"]       * fx_rate).round(0)
+            view["Gross Margin (₹)"] = (view["Gross Margin ($)"]  * fx_rate).round(0)
+            base_fmt.update({
+                "Billing (₹)":      "₹{:,.0f}",
+                "Payroll (₹)":      "₹{:,.0f}",
+                "Gross Margin (₹)": "₹{:,.0f}",
+            })
+
+        def _color_margin(val):
+            if isinstance(val, (int, float)):
+                return "color: #4ade80; font-weight:600" if val >= 0 else "color: #f87171; font-weight:600"
+            return ""
+
+        # Append totals row
+        num_cols = [c for c in view.columns if c not in ("Client Name", "Name")]
+        totals_row = {c: view[c].sum() if c in num_cols else ("" if c == "Client Name" else "TOTAL") for c in view.columns}
+        view_with_total = pd.concat([view, pd.DataFrame([totals_row])], ignore_index=True)
+        view_with_total.index = list(range(1, len(view) + 1)) + [""]
+
+        def _style_total_row(row):
+            is_total = row.name == ""
+            if is_total:
+                return ["font-weight:bold; border-top: 2px solid #7ecab0"] * len(row)
+            return [""] * len(row)
+
+        gm_cols = [c for c in view_with_total.columns if "Gross Margin" in c]
+        styled = (
+            view_with_total.style
+            .format(base_fmt)
+            .applymap(_color_margin, subset=gm_cols)
+            .apply(_style_total_row, axis=1)
+        )
+        st.dataframe(styled, use_container_width=True, height=510)
 
         csv = view.to_csv(index=False).encode()
         st.download_button("Download CSV", csv, "billed_employees.csv", "text/csv", key="dl_billed")
 
+    # ── Bench Employees ───────────────────────────────────────────────────────
+    elif active_section == _ED_TABS[1]:
+        st.caption(f"Employees on bench (Payroll - Non Bill) for **{emp_month}** — sourced from Excel Employee Summary sheet.")
+
+        if bench_df.empty:
+            st.info("No bench employees found in the Employee Summary sheet for this month.")
+        else:
+            search_bench = st.text_input("Search by name", key="bench_search")
+            view_bench = bench_df.copy()
+            if search_bench:
+                view_bench = view_bench[view_bench["Name"].str.contains(search_bench, case=False, na=False)]
+                view_bench = view_bench.reset_index(drop=True)
+                view_bench.index = range(1, len(view_bench) + 1)
+
+            if st.session_state.get("show_inr", False):
+                fx_rate = get_fx_rate(emp_month)
+                view_bench["Payroll (₹)"] = (view_bench["Payroll ($)"] * fx_rate).round(0)
+                fmt_b = {"Payroll ($)": "${:,.2f}", "Payroll (₹)": "₹{:,.0f}"}
+            else:
+                fmt_b = {"Payroll ($)": "${:,.2f}"}
+
+            st.dataframe(
+                view_bench.style.format(fmt_b),
+                use_container_width=True,
+                height=min(60 + len(view_bench) * 35, 480),
+            )
+
+            b1, b2 = st.columns(2)
+            b1.metric("Bench Headcount", len(bench_df))
+            b2.metric("Total Bench Payroll", f"${total_bench_payroll:,.2f}")
+
+            csv_bench = bench_df.to_csv(index=False).encode()
+            st.download_button("Download Bench CSV", csv_bench, f"bench_employees_{emp_month.replace(' ', '_')}.csv", "text/csv", key="dl_bench")
+
     # ── Non-Billing Employees ─────────────────────────────────────────────────
-    with nb_tab:
+    elif active_section == _ED_TABS[2]:
         # Tabs: Marketing | HR & Admin | Management
         DISPLAY_TABS   = ["Marketing", "HR & Admin", "Management"]
         tab_marketing, tab_hradmin, tab_mgmt = st.tabs([f"📌 {d}" for d in DISPLAY_TABS])
@@ -1632,14 +1844,7 @@ def page_import():
             os.unlink(tmp_path)
 
 
-def page_estimate(data):
-    st.title("🔮 Forward Estimate")
-
-    months = list(data.keys())
-    if not months:
-        st.warning("No data loaded. Import an Excel file first.")
-        return
-
+def _page_estimate_forward(data, months):
     # Use the most recent month as the cost baseline
     def _month_sort_key(m):
         _order = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
@@ -2020,6 +2225,209 @@ def page_estimate(data):
         st.rerun()
 
 
+def page_estimate(data):
+    st.title("🔮 Forward Estimate")
+
+    months = list(data.keys())
+    if not months:
+        st.warning("No data loaded. Import an Excel file first.")
+        return
+
+    _page_estimate_forward(data, months)
+
+
+def _page_sales_dept_data(data):
+    st.title("💼 Sales Dept Data")
+    MONTHS = ["Oct-25", "Nov-25", "Dec-25", "Jan-26", "Feb-26", "Mar-26", "Apr-26"]
+
+    _RAW = [
+        ("Rent",         "Regus Management",   0.00,     2362.99,  1646.26,  1692.11,  1660.21,  1645.91,  2735.01),
+        ("Food & Drink", "Food Exps",          398.22,    661.86,    56.73,   292.96,   711.23,  1545.06,   362.30),
+        ("Marketing",    "NATHO",               0.00,   1500.00,     0.00,  2695.00,     0.00,     0.00,     0.00),
+        ("Marketing",    "STAFFING IND AN",  2574.00,      0.00,     0.00,     0.00,     0.00,     0.00,     0.00),
+        ("Marketing",    "ASC COMMUNICA",       0.00,      0.00,     0.00,     0.00, 17500.00,     0.00,  2500.00),
+        ("Marketing",    "MINUTEMAN PRES",      0.00,      0.00,     0.00,     0.00,    78.40,     0.00,     0.00),
+        ("Travel",       "Travelling Exps",  2011.58,   1350.77,   533.20,  1650.66,  2992.14,  2590.64,  1957.33),
+        ("Shipping Charges", "Shipping Charges",  0.00,      0.00,     0.00,     0.00,     0.00,   287.50,  3080.01),
+        ("Software",     "ChatGpt",             0.00,      0.00,    60.00,    60.00,    60.00,    60.00,    44.13),
+        ("Software",     "SALESFORCE",        210.00,    125.00,   125.00,   125.00,     0.00,   241.25,     0.00),
+        ("Salary",       "Brett Williams",   4027.75,  11114.52, 11114.68, 10416.66, 10416.66, 10416.66, 10416.66),
+        ("Salary",       "Shravan",          1618.88,   1618.88,  1618.88,  1618.88,  1618.88,  1618.88,  1618.88),
+        ("Salary",       "Dominic",           730.00,    730.00,   730.00,   730.00,   730.00,   730.00,   730.00),
+        ("Salary",       "Jen",                 0.00,      0.00,     0.00,  3906.50,  5000.00,  5000.00,  5000.00),
+        ("Salary",       "Kenzie",              0.00,      0.00,     0.00,  2604.34,  3333.30,  3333.30,  3333.30),
+    ]
+
+    detail_df = pd.DataFrame(_RAW, columns=["Categories", "Particulars"] + MONTHS)
+
+    fmt_dict = {m: "${:,.2f}" for m in MONTHS}
+
+    # ── Brett: Cost vs Revenue table ──────────────────────────────────────────
+    st.markdown("""<div class="dash-section-hdr" style="margin-top:4px">
+  <span class="dash-section-title">Sales Performance — Brett Williams</span>
+  <span class="dash-section-sub">cost vs revenue brought in per month</span>
+</div>""", unsafe_allow_html=True)
+
+    def _shortmon_to_key(m):
+        mo, yr = m.split("-")
+        return f"{mo} 20{yr}"   # "Oct-25" → "Oct 2025"
+
+    # Brett's clients are those assigned to him in sales_persons.json
+    sales_map = load_sales_persons()
+    brett_clients = {
+        client for client, sp in sales_map.items()
+        if "brett" in sp.strip().lower()
+    }
+
+    perf_rows = []
+    for mo in MONTHS:
+        cost = float(detail_df[mo].sum())
+        data_key = _shortmon_to_key(mo)
+        revenue = 0.0
+        if data_key in data and brett_clients:
+            mdf = data[data_key]
+            mask = mdf["Client Name"].isin(brett_clients)
+            revenue = float(mdf.loc[mask, "Billing ($)"].sum())
+        net = revenue - cost
+        perf_rows.append({
+            "Month":           mo,
+            "Total Cost ($)":  cost,
+            "Revenue ($)":     revenue,
+            "Net ($)":         net,
+        })
+
+    perf_df = pd.DataFrame(perf_rows)
+
+    total_cost    = perf_df["Total Cost ($)"].sum()
+    total_revenue = perf_df["Revenue ($)"].sum()
+    total_net     = total_revenue - total_cost
+    total_row = pd.DataFrame([{
+        "Month":           "Total",
+        "Total Cost ($)":  total_cost,
+        "Revenue ($)":     total_revenue,
+        "Net ($)":         total_net,
+    }])
+    perf_with_total = pd.concat([perf_df, total_row], ignore_index=True)
+
+    def _style_perf(df):
+        out = [list([""] * len(df.columns)) for _ in range(len(df))]
+        for i, row in df.iterrows():
+            if row["Month"] == "Total":
+                base = "font-weight:bold; border-top:2px solid #00d4aa; color:#00d4aa"
+                net_color = base if row["Net ($)"] >= 0 else base.replace("#00d4aa", "#ff5a00")
+                out[i] = [base, base, base, net_color]
+            else:
+                net_color = "color:#00d4aa" if row["Net ($)"] >= 0 else "color:#ff5a00"
+                out[i][3] = net_color
+        return pd.DataFrame(out, columns=df.columns)
+
+    styled_perf = (
+        perf_with_total.style
+        .apply(_style_perf, axis=None)
+        .format({
+            "Total Cost ($)": "${:,.2f}",
+            "Revenue ($)":    "${:,.2f}",
+            "Net ($)":        "${:+,.2f}",
+        })
+        .hide(axis="index")
+    )
+    st.dataframe(styled_perf, use_container_width=True,
+                 height=(len(perf_with_total) + 1) * 36 + 38)
+
+    # ── Category summary ──────────────────────────────────────────────────────
+    st.markdown("""<div class="dash-section-hdr" style="margin-top:4px">
+  <span class="dash-section-title">Category Summary</span>
+  <span class="dash-section-sub">aggregated totals per month</span>
+</div>""", unsafe_allow_html=True)
+
+    summary_df = detail_df.groupby("Categories")[MONTHS].sum().reset_index()
+    grand_row = {"Categories": "Grand Total", **{m: summary_df[m].sum() for m in MONTHS}}
+    summary_with_total = pd.concat([summary_df, pd.DataFrame([grand_row])], ignore_index=True)
+
+    def _style_summary(df):
+        out = [list([""] * len(df.columns)) for _ in range(len(df))]
+        for i, row in df.iterrows():
+            if row["Categories"] == "Grand Total":
+                out[i] = ["font-weight:bold; border-top:2px solid #00d4aa; color:#00d4aa"] * len(df.columns)
+        return pd.DataFrame(out, columns=df.columns)
+
+    styled_summary = (
+        summary_with_total.style
+        .apply(_style_summary, axis=None)
+        .format(fmt_dict)
+        .hide(axis="index")
+    )
+    st.dataframe(styled_summary, use_container_width=True,
+                 height=min(400, (len(summary_with_total) + 1) * 36 + 38))
+
+    # ── Detailed breakdown ────────────────────────────────────────────────────
+    st.markdown("""<div class="dash-section-hdr" style="margin-top:18px">
+  <span class="dash-section-title">Detailed Breakdown</span>
+  <span class="dash-section-sub">by category &amp; particulars</span>
+</div>""", unsafe_allow_html=True)
+
+    totals_row = {"Categories": "", "Particulars": "Total", **{m: detail_df[m].sum() for m in MONTHS}}
+    detail_with_total = pd.concat([detail_df, pd.DataFrame([totals_row])], ignore_index=True)
+
+    def _style_detail(df):
+        out = [list([""] * len(df.columns)) for _ in range(len(df))]
+        for i, row in df.iterrows():
+            if row["Particulars"] == "Total":
+                out[i] = ["font-weight:bold; border-top:2px solid #00d4aa; color:#00d4aa"] * len(df.columns)
+        return pd.DataFrame(out, columns=df.columns)
+
+    styled_detail = (
+        detail_with_total.style
+        .apply(_style_detail, axis=None)
+        .format(fmt_dict)
+        .hide(axis="index")
+    )
+    st.dataframe(styled_detail, use_container_width=True,
+                 height=min(640, (len(detail_with_total) + 1) * 36 + 38))
+
+    # ── Trend chart ───────────────────────────────────────────────────────────
+    st.markdown("""<div class="dash-section-hdr" style="margin-top:18px">
+  <span class="dash-section-title">Spend Trend by Category</span>
+  <span class="dash-section-sub">stacked bar — monthly view</span>
+</div>""", unsafe_allow_html=True)
+
+    _CAT_COLORS = {
+        "Salary":            "#7b5ea7",
+        "Marketing":         "#00d4aa",
+        "Travel":            "#ffd166",
+        "Rent":              "#a29bfe",
+        "Software":          "#74b9ff",
+        "Food & Drink":      "#fd79a8",
+        "Shipping Charges":  "#b8f458",
+    }
+
+    fig_trend = go.Figure()
+    for cat in summary_df["Categories"].tolist():
+        row_vals = summary_df.loc[summary_df["Categories"] == cat, MONTHS].iloc[0].tolist()
+        fig_trend.add_trace(go.Bar(
+            name=cat,
+            x=MONTHS,
+            y=row_vals,
+            marker_color=_CAT_COLORS.get(cat, "#888888"),
+        ))
+    fig_trend.update_layout(barmode="stack")
+    _chart_layout(fig_trend, height=360, yaxis_tickprefix="$")
+    fig_trend.update_layout(
+        legend=dict(orientation="h", yanchor="bottom", y=1.01, xanchor="right", x=1)
+    )
+    st.plotly_chart(fig_trend, use_container_width=True)
+
+    # ── KPI row — monthly totals ───────────────────────────────────────────────
+    st.markdown("""<div class="dash-section-hdr" style="margin-top:18px">
+  <span class="dash-section-title">Monthly Total Spend</span>
+  <span class="dash-section-sub">all categories combined</span>
+</div>""", unsafe_allow_html=True)
+
+    kpi_cols = st.columns(len(MONTHS))
+    for i, mo in enumerate(MONTHS):
+        kpi_cols[i].metric(mo, f"${detail_df[mo].sum():,.0f}")
+
+
 # ── CSS ───────────────────────────────────────────────────────────────────────
 
 def _inject_css():
@@ -2195,7 +2603,8 @@ header[data-testid="stHeader"] {
     font-weight: 700 !important;
     font-size: 0.85rem !important;
     letter-spacing: 0.04em;
-    padding: 8px 22px !important;
+    padding: 8px 14px !important;
+    white-space: nowrap !important;
     box-shadow: 0 4px 18px rgba(0, 212, 170, 0.4) !important;
     transition: all 0.25s ease !important;
 }
@@ -2358,6 +2767,54 @@ hr {
 
 /* ── Captions ─────────────────────────────────────────────────── */
 .stCaption, small { color: #3d7a66 !important; font-size: 0.76rem !important; }
+
+/* ── KPI Nav Cards (Employee Details) — hover effect only ────── */
+/* .kpi-nav-card class is added by JS to the 4 clickable metrics  */
+.kpi-nav-card {
+    cursor: pointer !important;
+    transition: transform 0.22s ease, box-shadow 0.22s ease,
+                border-color 0.22s ease !important;
+}
+.kpi-nav-card:hover {
+    transform: translateY(-6px) !important;
+    box-shadow: 0 14px 36px rgba(0,212,170,0.25) !important;
+    border-color: rgba(0,212,170,0.5) !important;
+}
+
+/* ── Section radio (Employee Details tab switcher) ────────────── */
+.block-container .stRadio > div[role="radiogroup"] {
+    display: flex !important;
+    flex-direction: row !important;
+    gap: 4px !important;
+    background: rgba(0,212,170,0.05) !important;
+    border: 1px solid rgba(0,212,170,0.15) !important;
+    border-radius: 50px !important;
+    padding: 5px 6px !important;
+}
+.block-container .stRadio label[data-baseweb="radio"] {
+    border-radius: 50px !important;
+    padding: 8px 22px !important;
+    font-size: 0.87rem !important;
+    font-weight: 500 !important;
+    color: #5a9a86 !important;
+    cursor: pointer !important;
+    transition: all 0.18s ease !important;
+    border: none !important;
+    background: transparent !important;
+}
+.block-container .stRadio label[data-baseweb="radio"]:hover {
+    color: #b8f0e0 !important;
+    background: rgba(0,212,170,0.08) !important;
+}
+.block-container .stRadio label[data-baseweb="radio"]:has(input:checked) {
+    background: linear-gradient(135deg,#00b894 0%,#00d4aa 100%) !important;
+    color: #040f0b !important;
+    font-weight: 700 !important;
+    box-shadow: 0 3px 12px rgba(0,212,170,0.45) !important;
+}
+.block-container .stRadio [data-baseweb="radio"] > div:first-child {
+    display: none !important;
+}
 
 /* ── Forms ────────────────────────────────────────────────────── */
 [data-testid="stForm"] {
@@ -2564,16 +3021,133 @@ def _inject_logo():
     """, unsafe_allow_html=True)
 
 
+def _inject_day_css():
+    st.markdown("""
+<style>
+/* ── DAY MODE OVERRIDES ───────────────────────────────────────── */
+.stApp {
+    background: linear-gradient(135deg, #f0faf7 0%, #ffffff 60%, #f5f9ff 100%) !important;
+}
+header[data-testid="stHeader"] {
+    background: linear-gradient(180deg, #e8f7f2 0%, #f0faf7 100%) !important;
+    border-bottom: 1px solid rgba(0,180,140,0.18) !important;
+}
+[data-testid="stToolbar"] { background: transparent !important; }
+[data-testid="stSidebar"] {
+    background: linear-gradient(180deg, #e0f5ee 0%, #edf9f5 60%, #f0faf7 100%) !important;
+    border-right: 1px solid rgba(0,180,140,0.2) !important;
+}
+[data-testid="stSidebar"] p,
+[data-testid="stSidebar"] span,
+[data-testid="stSidebar"] small,
+[data-testid="stSidebar"] label,
+[data-testid="stSidebar"] .stMarkdown p { color: #1a4a3a !important; }
+[data-testid="stSidebarContent"] .stRadio label[data-baseweb="radio"] {
+    color: #3a7a62 !important;
+    border-color: rgba(0,180,140,0.12) !important;
+}
+[data-testid="stSidebarContent"] .stRadio label[data-baseweb="radio"]:hover {
+    background: rgba(0,180,140,0.1) !important;
+    color: #1a4a3a !important;
+}
+[data-testid="stSidebarContent"] .stRadio label[data-baseweb="radio"]:has(input:checked) {
+    background: linear-gradient(135deg,rgba(0,180,140,0.18) 0%,rgba(0,140,110,0.09) 100%) !important;
+    color: #007a5a !important;
+    border-left: 3px solid #00b894 !important;
+}
+h2 { color: #1a4a3a !important; }
+h3 { color: #2d6b55 !important; }
+[data-testid="metric-container"] {
+    background: linear-gradient(145deg,#ffffff 0%,#f0faf7 100%) !important;
+    border: 1px solid rgba(0,180,140,0.22) !important;
+    box-shadow: 0 4px 18px rgba(0,180,140,0.1), inset 0 1px 0 rgba(255,255,255,0.8) !important;
+}
+[data-testid="metric-container"]:hover {
+    box-shadow: 0 10px 28px rgba(0,180,140,0.18) !important;
+}
+[data-testid="stMetricLabel"] > div { color: #3a8a70 !important; }
+.stSelectbox > div > div,
+.stMultiSelect > div > div {
+    background: #ffffff !important;
+    border: 1px solid rgba(0,180,140,0.3) !important;
+}
+div[data-baseweb="select"] span,
+div[data-baseweb="select"] div[class],
+.stSelectbox [data-baseweb="select"] > div > div { color: #1a2e26 !important; }
+ul[data-baseweb="menu"] li { background: #f0faf7 !important; color: #1a2e26 !important; }
+ul[data-baseweb="menu"] li:hover { background: rgba(0,180,140,0.14) !important; }
+.stTextInput > div > div > input,
+.stNumberInput > div > div > input {
+    background: #ffffff !important;
+    border: 1px solid rgba(0,180,140,0.3) !important;
+    color: #1a2e26 !important;
+}
+.streamlit-expanderHeader {
+    background: rgba(0,180,140,0.07) !important;
+    border: 1px solid rgba(0,180,140,0.2) !important;
+    color: #2d6b55 !important;
+}
+.streamlit-expanderContent {
+    background: #f6fcf9 !important;
+    border-color: rgba(0,180,140,0.14) !important;
+}
+[data-testid="stForm"] {
+    background: rgba(0,180,140,0.04) !important;
+    border: 1px solid rgba(0,180,140,0.2) !important;
+}
+.stTabs [data-baseweb="tab-list"] {
+    background: rgba(0,180,140,0.07) !important;
+    border: 1px solid rgba(0,180,140,0.18) !important;
+}
+.stTabs [data-baseweb="tab"] { color: #3a8a70 !important; }
+.block-container .stRadio > div[role="radiogroup"] {
+    background: rgba(0,180,140,0.07) !important;
+    border-color: rgba(0,180,140,0.18) !important;
+}
+.block-container .stRadio label[data-baseweb="radio"] { color: #3a8a70 !important; }
+.block-container .stRadio label[data-baseweb="radio"]:hover { color: #1a4a3a !important; }
+hr { background: linear-gradient(90deg,transparent,rgba(0,180,140,0.35),transparent) !important; }
+.stSuccess > div { background: rgba(0,180,140,0.08) !important; color: #1a4a3a !important; }
+.stInfo    > div { background: rgba(100,80,160,0.07) !important; color: #3a2d6b !important; }
+.stWarning > div { background: rgba(160,200,0,0.07) !important;  color: #4a5a00 !important; }
+.stError   > div { background: rgba(220,50,50,0.07) !important;  color: #6a1a1a !important; }
+.stCaption, small { color: #5aaa8a !important; }
+.dash-kpi-card {
+    background: linear-gradient(150deg,#ffffff 0%,#f0faf7 100%) !important;
+    border: 1px solid rgba(0,180,140,0.18) !important;
+    box-shadow: 0 4px 16px rgba(0,180,140,0.08) !important;
+}
+.dash-kpi-label  { color: #5aaa8a !important; }
+.dash-kpi-sub    { color: #5aaa8a !important; }
+.dash-section-hdr { border-bottom-color: rgba(0,180,140,0.15) !important; }
+.dash-section-title { color: #2d6b55 !important; }
+.dash-section-sub   { color: #5aaa8a !important; }
+[data-testid="stDataFrame"] > div,
+[data-testid="stDataEditor"] > div {
+    border: 1px solid rgba(0,180,140,0.18) !important;
+    background: #ffffff !important;
+}
+::-webkit-scrollbar-track { background: #f0faf7; }
+</style>
+""", unsafe_allow_html=True)
+
+
 def main():
     _inject_css()
+    if st.session_state.get("day_mode", False):
+        _inject_day_css()
     _inject_logo()
     st.sidebar.title("Navigation")
 
-    col_r, col_t = st.sidebar.columns([1, 1])
-    if col_r.button("🔄 Refresh"):
+    col_r, col_theme = st.sidebar.columns([1, 1])
+    if col_r.button("🔄 Refresh", use_container_width=True):
         st.session_state["cache_bust"] = st.session_state.get("cache_bust", 0) + 1
         st.rerun()
-    col_t.checkbox("₹ INR", key="show_inr")
+    theme_label = "☀️ Day" if not st.session_state.get("day_mode", False) else "🌙 Night"
+    if col_theme.button(theme_label, key="theme_toggle", use_container_width=True):
+        st.session_state["day_mode"] = not st.session_state.get("day_mode", False)
+        st.rerun()
+    st.sidebar.checkbox("₹ INR", key="show_inr")
 
     # ── FX Rate management ────────────────────────────────────────────────────
     with st.sidebar.expander("💱 Wire Rates ($ → ₹)"):
@@ -2598,6 +3172,7 @@ def main():
         "Month Comparison":  page_compare,
         "Detailed Records":  page_detail,
         "Estimate":          page_estimate,
+        "Sales Dept Data":   _page_sales_dept_data,
         "Add Data":          page_data_entry,
         "Import Excel":      page_import,
     }
@@ -2609,6 +3184,7 @@ def main():
         "Month Comparison":  "📈",
         "Detailed Records":  "🔍",
         "Estimate":          "🔮",
+        "Sales Dept Data":   "💼",
         "Add Data":          "➕",
         "Import Excel":      "📂",
     }
@@ -2629,7 +3205,7 @@ def main():
             color = "🟢" if bal >= 0 else "🔴"
             st.sidebar.write(f"{color} **{m}**: {_disp(bal, m)}")
 
-    if choice in ("Dashboard", "Estimate", "Billing Clients", "Employee Details", "Expenses", "Month Comparison", "Detailed Records"):
+    if choice in ("Dashboard", "Estimate", "Billing Clients", "Employee Details", "Expenses", "Month Comparison", "Detailed Records", "Sales Dept Data"):
         pages[choice](data)
     else:
         pages[choice]()
