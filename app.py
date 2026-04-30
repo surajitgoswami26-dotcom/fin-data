@@ -14,6 +14,12 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# ── Login credentials (override via Railway environment variables) ────────────
+_ADMIN_USER = os.environ.get("ADMIN_USER", "admin")
+_ADMIN_PASS = os.environ.get("ADMIN_PASS", "TRAdmin@2026")
+_SALES_USER = os.environ.get("SALES_USER", "sales")
+_SALES_PASS = os.environ.get("SALES_PASS", "TRSales@2026")
+
 COST_COLS = [
     "Salary/Payroll", "Bench Payroll", "Marketing & BD",
     "HR, Admin, Mngt", "Software", "JobBoards",
@@ -3147,7 +3153,96 @@ hr { background: linear-gradient(90deg,transparent,rgba(0,180,140,0.35),transpar
 """, unsafe_allow_html=True)
 
 
+def _page_login():
+    _inject_css()
+    st.markdown("""
+<style>
+@keyframes fadeInDown {
+  from { opacity: 0; transform: translateY(-30px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(0,180,140,0.4); }
+  50%       { box-shadow: 0 0 0 12px rgba(0,180,140,0); }
+}
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+.login-wrapper {
+  display: flex; justify-content: center; align-items: center;
+  min-height: 80vh;
+}
+.login-card {
+  width: 420px;
+  background: linear-gradient(160deg, #0d2d24 0%, #081a15 100%);
+  border: 1px solid rgba(0,180,140,0.3);
+  border-radius: 20px;
+  padding: 48px 44px 40px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.5), 0 0 40px rgba(0,180,140,0.08);
+  animation: fadeInDown 0.6s ease both;
+}
+.login-logo-ring {
+  width: 72px; height: 72px; margin: 0 auto 20px;
+  border-radius: 50%;
+  border: 2px solid rgba(0,180,140,0.5);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 2rem;
+  animation: pulse 2.4s infinite;
+  background: rgba(0,180,140,0.08);
+}
+.login-title {
+  color: #00b48c; font-size: 1.8rem; font-weight: 700;
+  text-align: center; margin: 0 0 6px; letter-spacing: 1px;
+}
+.login-sub {
+  color: #5aaa8a; font-size: 0.82rem;
+  text-align: center; margin: 0 0 32px; letter-spacing: 0.3px;
+}
+.login-divider {
+  border: none; border-top: 1px solid rgba(0,180,140,0.15);
+  margin: 0 0 24px;
+}
+</style>
+<div class="login-wrapper">
+  <div class="login-card">
+    <div class="login-logo-ring">🔐</div>
+    <h1 class="login-title">TalentRupt</h1>
+    <p class="login-sub">Billing &amp; Cost Analysis Platform</p>
+    <hr class="login-divider"/>
+  </div>
+</div>
+""", unsafe_allow_html=True)
+
+    with st.form("login_form"):
+        username = st.text_input("Username", placeholder="Enter your username")
+        password = st.text_input("Password", type="password", placeholder="Enter your password")
+        submitted = st.form_submit_button("🔓  Sign In", type="primary", use_container_width=True)
+
+    if submitted:
+        if username == _ADMIN_USER and password == _ADMIN_PASS:
+            st.session_state["role"] = "admin"
+            st.session_state["username"] = username
+            st.rerun()
+        elif username == _SALES_USER and password == _SALES_PASS:
+            st.session_state["role"] = "sales"
+            st.session_state["username"] = username
+            st.rerun()
+        else:
+            st.error("Invalid username or password.")
+
+
 def main():
+    if "role" not in st.session_state:
+        _page_login()
+        return
+
+    role = st.session_state["role"]
+
     _inject_css()
     if st.session_state.get("day_mode", False):
         _inject_day_css()
@@ -3179,7 +3274,7 @@ def main():
                     save_fx_rates(fx_rates)
                     st.success(f"Saved ₹{fx_rate:.2f}/$ for {fx_month}")
                     st.rerun()
-    pages = {
+    all_pages = {
         "Dashboard":         page_dashboard,
         "Billing Clients":   page_billing_clients,
         "Employee Details":  page_employee_details,
@@ -3203,6 +3298,12 @@ def main():
         "Add Data":          "➕",
         "Import Excel":      "📂",
     }
+
+    if role == "sales":
+        pages = {"Sales Dept Data": all_pages["Sales Dept Data"]}
+    else:
+        pages = all_pages
+
     choice = st.sidebar.radio(
         "Go to",
         list(pages.keys()),
@@ -3210,17 +3311,26 @@ def main():
         key="page_choice",
     )
 
+    st.sidebar.divider()
+    st.sidebar.caption(f"Logged in as **{st.session_state.get('username', role)}**")
+    if st.sidebar.button("🚪 Logout", use_container_width=True):
+        st.session_state.clear()
+        st.rerun()
+
     data = get_all_data()
 
-    st.sidebar.divider()
-    if data:
-        st.sidebar.subheader("Summary")
-        for m, df in data.items():
-            bal = df["Balance"].sum()   # already in $
-            color = "🟢" if bal >= 0 else "🔴"
-            st.sidebar.write(f"{color} **{m}**: {_disp(bal, m)}")
+    if role == "admin":
+        if data:
+            st.sidebar.divider()
+            st.sidebar.subheader("Summary")
+            for m, df in data.items():
+                bal = df["Balance"].sum()
+                color = "🟢" if bal >= 0 else "🔴"
+                st.sidebar.write(f"{color} **{m}**: {_disp(bal, m)}")
 
-    if choice in ("Dashboard", "Estimate", "Billing Clients", "Employee Details", "Expenses", "Month Comparison", "Detailed Records", "Sales Dept Data"):
+    needs_data = ("Dashboard", "Estimate", "Billing Clients", "Employee Details",
+                  "Expenses", "Month Comparison", "Detailed Records", "Sales Dept Data")
+    if choice in needs_data:
         pages[choice](data)
     else:
         pages[choice]()
