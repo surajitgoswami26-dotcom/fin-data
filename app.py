@@ -312,6 +312,8 @@ def load_excel_sheet(path, sheet):
 @st.cache_data(ttl=0)
 def load_excel(path, _bust=0):
     sheets = {}
+    if not os.path.exists(path):
+        return sheets
     try:
         xl = pd.ExcelFile(path)
         for raw_name, display_name in BILLING_SHEETS.items():
