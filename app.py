@@ -3268,6 +3268,30 @@ div[data-testid="stForm"] button[kind="primaryFormSubmit"]:hover {
   transform:translateY(-1px) !important;box-shadow:0 7px 20px rgba(0,180,140,.32) !important;
 }
 div[data-testid="stForm"] .stTextInput { margin-bottom:2px !important; }
+
+/* ── Mobile: hide spacer columns, full-width card ── */
+@media (max-width: 768px) {
+  [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:nth-child(1),
+  [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:nth-child(3) {
+    display: none !important;
+  }
+  [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:nth-child(2) {
+    min-width: calc(100% - 32px) !important;
+    padding: 28px 20px 24px !important;
+    border-radius: 16px !important;
+    margin: 0 16px !important;
+  }
+  [data-testid="stHorizontalBlock"] {
+    justify-content: center !important;
+    padding: 32px 0 !important;
+    min-height: 100vh !important;
+  }
+  [data-testid="stMainBlockContainer"] { padding-left: 0 !important; padding-right: 0 !important; }
+  .login-brand { font-size: 1.3rem !important; letter-spacing: 1px !important; }
+  .login-ring  { width: 52px !important; height: 52px !important; font-size: 1.5rem !important; }
+  .login-sub   { font-size: .65rem !important; }
+  .lp .a, .lp .e { display: none !important; }
+}
 </style>
 <div class="lp"><span class="a"></span><span class="b"></span><span class="c"></span><span class="d"></span><span class="e"></span></div>
 """, unsafe_allow_html=True)
