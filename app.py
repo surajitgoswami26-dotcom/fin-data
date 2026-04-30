@@ -263,28 +263,36 @@ _CAT_MAP = {
     "Other Expense":    "Other Expenses",
 }
 
-def _parse_expense_sheet(df):
+def _parse_expense_sheet(df, inr_rate=None):
     """Normalise an expense sheet into Category / Description / Amount records.
 
     Handles two layouts:
       3-col: Category | Description | Amount($)
-      4-col: Category | Description | Amount(INR) | Amount($)   ← Jan format
-    Finds the $ amount column by name when possible, else uses the last column.
+      4-col: Category | Description | Amount(INR) | Amount($)   ← Jan/Feb format
+
+    When the USD column exists but is blank, falls back to INR column ÷ inr_rate.
     """
     df = df.copy()
-    # Find the $ amount column: prefer a column whose header contains "$"
-    amount_col = next(
-        (c for c in df.columns if "$" in str(c)),
-        df.columns[-1]   # fallback: last column
-    )
-    # Find category and description columns (first two)
     cat_col  = df.columns[0]
     desc_col = df.columns[1]
+
+    # Find the $ amount column: prefer a column whose header contains "$"
+    usd_col = next((c for c in df.columns if "$" in str(c)), None)
+    inr_col = next((c for c in df.columns if "inr" in str(c).lower()), None)
+
+    if usd_col is not None:
+        amounts = pd.to_numeric(df[usd_col], errors="coerce").fillna(0)
+        # If USD column is effectively empty, fall back to INR ÷ rate
+        if amounts.sum() == 0 and inr_col is not None and inr_rate:
+            amounts = pd.to_numeric(df[inr_col], errors="coerce").fillna(0) / inr_rate
+    else:
+        # No $ column at all — use last column
+        amounts = pd.to_numeric(df[df.columns[-1]], errors="coerce").fillna(0)
 
     out = pd.DataFrame({
         "Category":    df[cat_col].astype(str).str.strip(),
         "Description": df[desc_col].astype(str).str.strip(),
-        "Amount":      pd.to_numeric(df[amount_col], errors="coerce").fillna(0),
+        "Amount":      amounts,
     })
     out = out[out["Amount"] > 0].copy()
     out["Category"] = out["Category"].map(lambda c: _CAT_MAP.get(c, c))
@@ -298,7 +306,7 @@ def load_excel_expenses(path, _bust=0):
         sheet = _find_latest_expense_sheet(xl_names)
         if sheet is None:
             return []
-        return _parse_expense_sheet(pd.read_excel(path, sheet_name=sheet))
+        return _parse_expense_sheet(pd.read_excel(path, sheet_name=sheet), inr_rate=_INR_RATE)
     except Exception:
         return []
 
@@ -307,13 +315,14 @@ def load_expenses_for_month(path, month, _bust=0):
     """Load expenses for a specific month.
     Tries `path` first; if month sheet not found there, falls back to EXCEL_PATH."""
     abbr = month.split()[0][:3]  # e.g. "Mar"
+    fx = get_fx_rate(month)
     search_paths = [path] if path == EXCEL_PATH else [path, EXCEL_PATH]
     for p in search_paths:
         try:
             xl_names = pd.ExcelFile(p).sheet_names
             sheet = _find_sheet(xl_names, ["expenses"], abbr)
             if sheet:
-                return _parse_expense_sheet(pd.read_excel(p, sheet_name=sheet))
+                return _parse_expense_sheet(pd.read_excel(p, sheet_name=sheet), inr_rate=fx)
         except Exception:
             continue
     return []
