@@ -45,9 +45,10 @@ EMP_PATH  = os.path.join(_DATA_DIR, "employees.json")
 NON_BILLING_DEPTS = ["Marketing", "HR", "Admin", "Management"]
 EMP_FIELDS = ["Name", "Designation", "Salary ($)", "Join Date", "Notes"]
 
-EXPENSE_PATH   = os.path.join(_DATA_DIR, "expenses.json")
-FX_RATES_PATH  = os.path.join(_DATA_DIR, "fx_rates.json")
-CONFIG_PATH    = os.path.join(_DATA_DIR, "config.json")
+EXPENSE_PATH        = os.path.join(_DATA_DIR, "expenses.json")
+FX_RATES_PATH       = os.path.join(_DATA_DIR, "fx_rates.json")
+CONFIG_PATH         = os.path.join(_DATA_DIR, "config.json")
+REVENUE_ONLY_PATH   = os.path.join(_APP_DIR, "revenue_only.json")
 UPLOADS_DIR    = os.path.join(_DATA_DIR, "uploads")
 
 def _get_active_excel():
@@ -189,6 +190,13 @@ def load_sales_persons():
 def save_sales_persons(data):
     with open(SALES_PATH, "w") as f:
         json.dump(data, f, indent=2)
+
+def load_revenue_only():
+    if os.path.exists(REVENUE_ONLY_PATH):
+        with open(REVENUE_ONLY_PATH) as f:
+            raw = json.load(f)
+        return {month: pd.DataFrame(rows) for month, rows in raw.items()}
+    return {}
 
 _WANTED = [
     "Sr. No.", "Client Name", "Seat Name", "Billing ($)", "Billing (Rs.)",
@@ -2300,15 +2308,18 @@ def _page_sales_dept_data(data):
         if "brett" in sp.strip().lower()
     }
 
+    revenue_only = load_revenue_only()
     perf_rows = []
     for mo in MONTHS:
         cost = float(detail_df[mo].sum())
         data_key = _shortmon_to_key(mo)
         revenue = 0.0
-        if data_key in data and brett_clients:
-            mdf = data[data_key]
-            mask = mdf["Client Name"].isin(brett_clients)
-            revenue = float(mdf.loc[mask, "Billing ($)"].sum())
+        rev_source = data if data_key in data else revenue_only
+        if data_key in rev_source and brett_clients:
+            mdf = rev_source[data_key]
+            if "Client Name" in mdf.columns and "Billing ($)" in mdf.columns:
+                mask = mdf["Client Name"].isin(brett_clients)
+                revenue = float(mdf.loc[mask, "Billing ($)"].sum())
         net = revenue - cost
         perf_rows.append({
             "Month":           mo,
