@@ -16,7 +16,7 @@ st.set_page_config(
 
 # ── Login credentials (override via Railway environment variables) ────────────
 _ADMIN_USER = os.environ.get("ADMIN_USER", "admin")
-_ADMIN_PASS = os.environ.get("ADMIN_PASS", "TRAdmin2026")
+_ADMIN_PASS = os.environ.get("ADMIN_PASS", "Rainmaker2026")
 _SALES_USER = os.environ.get("SALES_USER", "sales")
 _SALES_PASS = os.environ.get("SALES_PASS", "TRSales2026")
 
