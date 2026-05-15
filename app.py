@@ -801,11 +801,27 @@ def _load_employee_sheet(path, month=None, _bust=0):
         df = pd.read_excel(p, sheet_name=s)
         cat_col  = df.columns[0]
         name_col = df.columns[1]
-        amount_col = next((c for c in df.columns if "$" in str(c)), df.columns[-1])
+        usd_col = next((c for c in df.columns if "$" in str(c)), None)
+        inr_col = next((c for c in df.columns if "inr" in str(c).lower()), None)
+
+        # Per-row: prefer USD, fall back to INR ÷ FX rate when USD is blank/0
+        fx = get_fx_rate(month) if (month and isinstance(month, str)) else _INR_RATE
+        if usd_col is not None:
+            usd_vals = pd.to_numeric(df[usd_col], errors="coerce")
+            amounts  = usd_vals.fillna(0).astype(float)
+            if inr_col is not None and fx:
+                inr_vals = pd.to_numeric(df[inr_col], errors="coerce").fillna(0)
+                mask = (usd_vals.isna()) | (usd_vals == 0)
+                amounts.loc[mask] = (inr_vals.loc[mask] / fx).astype(float)
+        elif inr_col is not None and fx:
+            amounts = pd.to_numeric(df[inr_col], errors="coerce").fillna(0) / fx
+        else:
+            amounts = pd.to_numeric(df[df.columns[-1]], errors="coerce").fillna(0)
+
         return pd.DataFrame({
             "Category": df[cat_col].astype(str).str.strip(),
             "Name":     df[name_col].astype(str).str.strip(),
-            "Amount":   pd.to_numeric(df[amount_col], errors="coerce").fillna(0),
+            "Amount":   amounts,
         })
 
     paths = [path] + [p for p in _get_all_excels() if p != path]
