@@ -239,14 +239,39 @@ def get_actual_cost_totals_usd(bust=0):
     xl_exp        = load_excel_expenses(active_xl, _bust=bust)
     sal_lookup    = load_billing_salaries(active_xl, _bust=bust)
     bench_payroll = load_bench_salaries(active_xl, _bust=bust)
+    billing_payroll = sum(sal_lookup.values())
 
-    marketing_payroll     = sum(r.get("Salary ($)", 0) or 0 for r in emp_data.get("Marketing", []))
-    hr_admin_mgmt_payroll = sum(
+    # ── Marketing / HR / Admin / Management payroll ─────────────────────────────
+    # Primary source: Employee Summary sheet (whatever the active Excel has now).
+    # Fallback: manually added rows in employees.json.
+    emp_df = _load_employee_sheet(active_xl, _bust=bust)
+
+    def _excel_sum(*keywords):
+        if emp_df.empty:
+            return 0.0
+        cats = emp_df["Category"].astype(str).str.lower()
+        # Exclude rows already counted as billing/bench so we don't double-count
+        mask = (~cats.isin(["payroll - billing", "payroll - non bill"])) & cats.apply(
+            lambda c: any(kw in c for kw in keywords)
+        )
+        return float(emp_df.loc[mask, "Amount"].sum())
+
+    marketing_excel = _excel_sum("marketing", "bd", "business dev")
+    hr_admin_mgmt_excel = _excel_sum("hr", "admin", "management", "mngt", "mgmt")
+
+    marketing_payroll_json = sum(
+        r.get("Salary ($)", 0) or 0 for r in emp_data.get("Marketing", [])
+    )
+    hr_admin_mgmt_payroll_json = sum(
         r.get("Salary ($)", 0) or 0
         for dept in ("HR", "Admin", "Management")
         for r in emp_data.get(dept, [])
     )
-    billing_payroll = sum(sal_lookup.values())
+
+    marketing_payroll = marketing_excel if marketing_excel > 0 else marketing_payroll_json
+    hr_admin_mgmt_payroll = (
+        hr_admin_mgmt_excel if hr_admin_mgmt_excel > 0 else hr_admin_mgmt_payroll_json
+    )
 
     exp_by_cat: dict = {}
     for r in xl_exp:
