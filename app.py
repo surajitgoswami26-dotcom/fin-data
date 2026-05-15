@@ -1557,6 +1557,44 @@ def page_employee_details(data):
 
     # ── Non-Billing Employees ─────────────────────────────────────────────────
     elif active_section == _ED_TABS[2]:
+        # Pull Employee Summary sheet rows for non-billing categories
+        _xl_emp = _load_employee_sheet(_get_active_excel(), month=emp_month, _bust=bust)
+
+        def _xl_dept_rows(keywords):
+            """Rows from the Excel Employee Summary whose Category matches a keyword."""
+            if _xl_emp is None or _xl_emp.empty:
+                return []
+            cats = _xl_emp["Category"].astype(str).str.lower()
+            mask = (~cats.isin(["payroll - billing", "payroll - non bill"])) & cats.apply(
+                lambda c: any(kw in c for kw in keywords)
+            )
+            rows = _xl_emp.loc[mask]
+            return [
+                {"Name": str(r["Name"]).strip(),
+                 "Designation": "",
+                 "Salary ($)": float(r["Amount"]),
+                 "Join Date": "",
+                 "Notes": "from Employee Summary sheet"}
+                for _, r in rows.iterrows()
+                if str(r["Name"]).strip().lower() not in ("nan", "none", "", "total")
+            ]
+
+        def _merge_dept(json_emps, xl_emps):
+            """Merge json + excel, json wins on name conflicts (case-insensitive)."""
+            seen = {e.get("Name", "").strip().lower() for e in json_emps}
+            out = list(json_emps)
+            for x in xl_emps:
+                if x["Name"].lower() not in seen:
+                    out.append(x)
+            return out
+
+        DEPT_KEYWORDS = {
+            "Marketing":  ["marketing", "bd", "business dev"],
+            "HR":         ["hr"],
+            "Admin":      ["admin"],
+            "Management": ["management", "mngt", "mgmt"],
+        }
+
         # Tabs: Marketing | HR & Admin | Management
         DISPLAY_TABS   = ["Marketing", "HR & Admin", "Management"]
         tab_marketing, tab_hradmin, tab_mgmt = st.tabs([f"📌 {d}" for d in DISPLAY_TABS])
@@ -1564,7 +1602,9 @@ def page_employee_details(data):
         def _render_dept_tab(dept, dtab):
             """Render a single-dept tab (Marketing or Management)."""
             with dtab:
-                employees = emp_data.get(dept, [])
+                json_emps = emp_data.get(dept, [])
+                xl_emps   = _xl_dept_rows(DEPT_KEYWORDS[dept])
+                employees = _merge_dept(json_emps, xl_emps)
                 dept_salary = sum(r.get("Salary ($)", 0) or 0 for r in employees)
                 d1, d2 = st.columns(2)
                 d1.metric(f"{dept} Headcount", len(employees))
@@ -1617,8 +1657,8 @@ def page_employee_details(data):
 
         # ── HR & Admin combined tab ───────────────────────────────────────────
         with tab_hradmin:
-            hr_emps    = emp_data.get("HR", [])
-            admin_emps = emp_data.get("Admin", [])
+            hr_emps    = _merge_dept(emp_data.get("HR", []),    _xl_dept_rows(DEPT_KEYWORDS["HR"]))
+            admin_emps = _merge_dept(emp_data.get("Admin", []), _xl_dept_rows(DEPT_KEYWORDS["Admin"]))
             all_emps   = hr_emps + admin_emps
             total_salary = sum(r.get("Salary ($)", 0) or 0 for r in all_emps)
 
