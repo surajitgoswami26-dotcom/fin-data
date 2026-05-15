@@ -84,6 +84,18 @@ def _save_active_excel(path):
     cfg["active_excel_path"] = path
     with open(CONFIG_PATH, "w") as f:
         json.dump(cfg, f, indent=2)
+
+def _get_all_excels():
+    """Return every xlsx in known upload dirs, most-recently-modified first.
+    Used so that a partial upload (e.g. only April) doesn't break reads
+    for months whose sheets live in older files."""
+    import glob as _glob
+    paths = set()
+    for d in (UPLOADS_DIR, os.path.join(_APP_DIR, "uploads")):
+        if os.path.isdir(d):
+            for p in _glob.glob(os.path.join(d, "*.xlsx")):
+                paths.add(p)
+    return sorted(paths, key=lambda p: os.path.getmtime(p), reverse=True)
 EXPENSE_CATS   = [
     "Rent", "Infrastructure", "Software", "Job Boards",
     "Travel", "Meals", "Fees & Charges",
@@ -312,11 +324,15 @@ def load_excel_expenses(path, _bust=0):
 
 @st.cache_data(ttl=0)
 def load_expenses_for_month(path, month, _bust=0):
-    """Load expenses for a specific month.
-    Tries `path` first; if month sheet not found there, falls back to EXCEL_PATH."""
-    abbr = month.split()[0][:3]  # e.g. "Mar"
+    """Load expenses for a specific month, searching across all uploaded files."""
+    if not month or not isinstance(month, str):
+        return []
+    parts = month.split()
+    if not parts:
+        return []
+    abbr = parts[0][:3]
     fx = get_fx_rate(month)
-    search_paths = [path] if path == EXCEL_PATH else [path, EXCEL_PATH]
+    search_paths = [path] + [p for p in _get_all_excels() if p != path] + [EXCEL_PATH]
     for p in search_paths:
         try:
             xl_names = pd.ExcelFile(p).sheet_names
@@ -347,16 +363,23 @@ def load_excel_sheet(path, sheet):
 
 @st.cache_data(ttl=0)
 def load_excel(path, _bust=0):
+    """Load BILLING_SHEETS from `path` first, then from any other uploaded
+    Excel files for sheets still missing. This keeps Jan/Feb/Mar data alive
+    even after a single-month file (e.g. April) becomes the active Excel."""
     sheets = {}
-    if not os.path.exists(path):
-        return sheets
-    try:
-        xl = pd.ExcelFile(path)
-        for raw_name, display_name in BILLING_SHEETS.items():
-            if raw_name in xl.sheet_names:
-                sheets[display_name] = load_excel_sheet(path, raw_name)
-    except Exception as e:
-        st.error(f"Could not load Excel file: {e}")
+    paths = [path] + [p for p in _get_all_excels() if p != path]
+    for p in paths:
+        if not os.path.exists(p):
+            continue
+        try:
+            xl = pd.ExcelFile(p)
+            for raw_name, display_name in BILLING_SHEETS.items():
+                if display_name in sheets:
+                    continue
+                if raw_name in xl.sheet_names:
+                    sheets[display_name] = load_excel_sheet(p, raw_name)
+        except Exception:
+            continue
     return sheets
 
 def get_all_data():
@@ -745,41 +768,42 @@ _INR_RATE = 85  # Rs per $
 @st.cache_data(ttl=0)
 def _load_employee_sheet(path, month=None, _bust=0):
     """Return the Employee Summary DataFrame for `month` (e.g. 'Jan 2026').
-    If month is given, tries the matching sheet first, then falls back to
-    the most recent sheet available."""
-    try:
-        xl_names = pd.ExcelFile(path).sheet_names
+    Searches across all uploaded Excel files so a partial upload doesn't
+    hide older months' employee data."""
+    def _read_sheet(p, s):
+        df = pd.read_excel(p, sheet_name=s)
+        cat_col  = df.columns[0]
+        name_col = df.columns[1]
+        amount_col = next((c for c in df.columns if "$" in str(c)), df.columns[-1])
+        return pd.DataFrame({
+            "Category": df[cat_col].astype(str).str.strip(),
+            "Name":     df[name_col].astype(str).str.strip(),
+            "Amount":   pd.to_numeric(df[amount_col], errors="coerce").fillna(0),
+        })
 
-        def _read_sheet(s):
-            df = pd.read_excel(path, sheet_name=s)
-            # Category = first col, Name = second col (header names vary across months)
-            cat_col  = df.columns[0]
-            name_col = df.columns[1]
-            # Amount: prefer column whose header contains "$", else fall back to last col
-            # This handles: 3-col (March: Amount $) and 4-col (Jan/Feb: Amount INR | Amount $)
-            amount_col = next((c for c in df.columns if "$" in str(c)), df.columns[-1])
-            return pd.DataFrame({
-                "Category": df[cat_col].astype(str).str.strip(),
-                "Name":     df[name_col].astype(str).str.strip(),
-                "Amount":   pd.to_numeric(df[amount_col], errors="coerce").fillna(0),
-            })
-
-        # Try month-specific sheet first
-        if month:
-            abbr = month.split()[0][:3]
-            s = _find_sheet(xl_names, ["employee summary", "employee summery"], abbr)
-            if s:
-                return _read_sheet(s)
-
-        # Fall back to most recent available
-        for abbr in _ALL_MONTH_ABBRS:
-            s = _find_sheet(xl_names, ["employee summary", "employee summery"], abbr)
-            if s:
-                return _read_sheet(s)
-
-        return pd.DataFrame(columns=["Category", "Name", "Amount"])
-    except Exception:
-        return pd.DataFrame(columns=["Category", "Name", "Amount"])
+    paths = [path] + [p for p in _get_all_excels() if p != path]
+    # Try month-specific sheet first across all files
+    if month and isinstance(month, str) and month.split():
+        abbr = month.split()[0][:3]
+        for p in paths:
+            try:
+                xl_names = pd.ExcelFile(p).sheet_names
+                s = _find_sheet(xl_names, ["employee summary", "employee summery"], abbr)
+                if s:
+                    return _read_sheet(p, s)
+            except Exception:
+                continue
+    # Fall back to most recent available across all files
+    for abbr in _ALL_MONTH_ABBRS:
+        for p in paths:
+            try:
+                xl_names = pd.ExcelFile(p).sheet_names
+                s = _find_sheet(xl_names, ["employee summary", "employee summery"], abbr)
+                if s:
+                    return _read_sheet(p, s)
+            except Exception:
+                continue
+    return pd.DataFrame(columns=["Category", "Name", "Amount"])
 
 
 def load_billing_salaries(path, month=None, _bust=0):
@@ -1641,9 +1665,17 @@ def page_expenses(data):
     manual_entries = load_expenses()
     all_months     = sorted(set(months + [e.get("Month", months[0] if months else "Jan 2026")
                                           for e in manual_entries]))
+    all_months     = [m for m in all_months if isinstance(m, str) and m.strip()]
+
+    if not all_months:
+        st.info("No data available yet. Upload an Excel file from the Import Excel page.")
+        return
 
     exp_month  = st.selectbox("Select Month", all_months,
                                index=len(all_months) - 1, key="exp_month_view")
+    if not exp_month:
+        st.info("Select a month to view expenses.")
+        return
     excel_rows = load_expenses_for_month(_get_active_excel(), exp_month, _bust=bust)
 
     # ── Build records for the selected month ──────────────────────────────────
