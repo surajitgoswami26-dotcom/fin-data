@@ -1844,8 +1844,17 @@ def page_import():
                 elif s_clean.startswith("clients-"):
                     suffix = sheet.split("-", 1)[1]
                     billing_sheets[sheet] = _suffix_to_month(suffix)
+                else:
+                    # Also accept sheets whose name itself starts with a month
+                    # (e.g. "April 2026", "Apr 2026", "Apr-26", "April")
+                    mapped = _suffix_to_month(sheet)
+                    if mapped and mapped != sheet.strip() and any(
+                        mapped.startswith(abbr) for abbr in
+                        ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
+                    ):
+                        billing_sheets[sheet] = mapped
             if not billing_sheets:
-                st.warning("No billing sheets (named 'Clients' or 'Clients-<Month>') found in this file.")
+                st.warning("No billing sheets found. Sheet should be named 'Clients-<Month>' or '<Month> <Year>' (e.g. 'April 2026').")
             else:
                 st.success(f"Found billing sheets: {', '.join(f'{s} → {m}' for s, m in billing_sheets.items())}")
                 # Update the main Excel path and BILLING_SHEETS by writing a config file
