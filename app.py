@@ -399,6 +399,8 @@ def get_all_data():
     for month, rows in custom.items():
         if month in excel_months:
             continue
+        if not rows:
+            continue  # skip empty entries — they have no columns and break downstream
         sheets[month] = pd.DataFrame(rows)
 
     # ── Apply saved P&L overrides (Billing corrections + removals) ───────────
@@ -1902,6 +1904,15 @@ def page_import():
                 for sheet, month_name in billing_sheets.items():
                     if month_name not in known_months:
                         df = load_excel_sheet(tmp_path, sheet)
+                        if len(df) == 0:
+                            raw_cols = list(pd.read_excel(tmp_path, sheet_name=sheet).columns)
+                            st.warning(
+                                f"⚠️ Sheet '{sheet}' imported as 0 rows. "
+                                f"Expected columns: Sr. No., Client Name, Seat Name, Billing ($), Billing (Rs.). "
+                                f"Found columns: {raw_cols}"
+                            )
+                            # Don't save an empty entry — would crash downstream
+                            continue
                         custom[month_name] = df.to_dict(orient="records")
                         st.info(f"Imported {len(df)} rows → {month_name}")
                         imported += 1
@@ -3463,6 +3474,9 @@ def main():
             st.sidebar.divider()
             st.sidebar.subheader("Summary")
             for m, df in data.items():
+                if "Balance" not in df.columns or len(df) == 0:
+                    st.sidebar.write(f"⚠️ **{m}**: no rows")
+                    continue
                 bal = df["Balance"].sum()
                 color = "🟢" if bal >= 0 else "🔴"
                 st.sidebar.write(f"{color} **{m}**: {_disp(bal, m)}")
