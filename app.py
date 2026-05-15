@@ -136,6 +136,41 @@ def _find_latest_expense_sheet(xl_names):
 
 OVERRIDE_PATH  = os.path.join(_DATA_DIR, "pnl_overrides.json")
 SALES_PATH     = os.path.join(_DATA_DIR, "sales_persons.json")
+SALES_DEPT_DATA_PATH = os.path.join(_DATA_DIR, "sales_dept_data.json")
+
+_DEFAULT_SALES_DEPT_MONTHS = ["Oct-25", "Nov-25", "Dec-25", "Jan-26", "Feb-26", "Mar-26", "Apr-26"]
+_DEFAULT_SALES_DEPT_ROWS = [
+    {"Categories": "Rent",             "Particulars": "Regus Management", "Oct-25": 0.00,    "Nov-25": 2362.99, "Dec-25": 1646.26, "Jan-26": 1692.11, "Feb-26": 1660.21, "Mar-26": 1645.91, "Apr-26": 2735.01},
+    {"Categories": "Food & Drink",     "Particulars": "Food Exps",        "Oct-25": 398.22,  "Nov-25": 661.86,  "Dec-25": 56.73,   "Jan-26": 292.96,  "Feb-26": 711.23,  "Mar-26": 1545.06, "Apr-26": 362.30},
+    {"Categories": "Marketing",        "Particulars": "NATHO",            "Oct-25": 0.00,    "Nov-25": 1500.00, "Dec-25": 0.00,    "Jan-26": 2695.00, "Feb-26": 0.00,    "Mar-26": 0.00,    "Apr-26": 0.00},
+    {"Categories": "Marketing",        "Particulars": "STAFFING IND AN",  "Oct-25": 2574.00, "Nov-25": 0.00,    "Dec-25": 0.00,    "Jan-26": 0.00,    "Feb-26": 0.00,    "Mar-26": 0.00,    "Apr-26": 0.00},
+    {"Categories": "Marketing",        "Particulars": "ASC COMMUNICA",    "Oct-25": 0.00,    "Nov-25": 0.00,    "Dec-25": 0.00,    "Jan-26": 0.00,    "Feb-26": 17500.00,"Mar-26": 0.00,    "Apr-26": 2500.00},
+    {"Categories": "Marketing",        "Particulars": "MINUTEMAN PRES",   "Oct-25": 0.00,    "Nov-25": 0.00,    "Dec-25": 0.00,    "Jan-26": 0.00,    "Feb-26": 78.40,   "Mar-26": 0.00,    "Apr-26": 0.00},
+    {"Categories": "Travel",           "Particulars": "Travelling Exps",  "Oct-25": 2011.58, "Nov-25": 1350.77, "Dec-25": 533.20,  "Jan-26": 4696.92, "Feb-26": 4406.79, "Mar-26": 3298.85, "Apr-26": 5821.52},
+    {"Categories": "Shipping Charges", "Particulars": "Shipping Charges", "Oct-25": 0.00,    "Nov-25": 0.00,    "Dec-25": 0.00,    "Jan-26": 0.00,    "Feb-26": 0.00,    "Mar-26": 287.50,  "Apr-26": 3080.01},
+    {"Categories": "Software",         "Particulars": "ChatGpt",          "Oct-25": 0.00,    "Nov-25": 0.00,    "Dec-25": 60.00,   "Jan-26": 60.00,   "Feb-26": 60.00,   "Mar-26": 60.00,   "Apr-26": 44.13},
+    {"Categories": "Software",         "Particulars": "SALESFORCE",       "Oct-25": 210.00,  "Nov-25": 125.00,  "Dec-25": 125.00,  "Jan-26": 125.00,  "Feb-26": 0.00,    "Mar-26": 241.25,  "Apr-26": 0.00},
+    {"Categories": "Salary",           "Particulars": "Brett Williams",   "Oct-25": 4027.75, "Nov-25": 11114.52,"Dec-25": 11114.68,"Jan-26": 10416.66,"Feb-26": 10416.66,"Mar-26": 10416.66,"Apr-26": 10416.66},
+    {"Categories": "Salary",           "Particulars": "Shravan",          "Oct-25": 1618.88, "Nov-25": 1618.88, "Dec-25": 1618.88, "Jan-26": 1618.88, "Feb-26": 1618.88, "Mar-26": 1618.88, "Apr-26": 1618.88},
+    {"Categories": "Salary",           "Particulars": "Dominic",          "Oct-25": 730.00,  "Nov-25": 730.00,  "Dec-25": 730.00,  "Jan-26": 730.00,  "Feb-26": 730.00,  "Mar-26": 730.00,  "Apr-26": 730.00},
+    {"Categories": "Salary",           "Particulars": "Jen",              "Oct-25": 0.00,    "Nov-25": 0.00,    "Dec-25": 0.00,    "Jan-26": 3906.50, "Feb-26": 5000.00, "Mar-26": 5000.00, "Apr-26": 5000.00},
+    {"Categories": "Salary",           "Particulars": "Kenzie",           "Oct-25": 0.00,    "Nov-25": 0.00,    "Dec-25": 0.00,    "Jan-26": 2604.34, "Feb-26": 3333.30, "Mar-26": 3333.30, "Apr-26": 3333.30},
+]
+
+def load_sales_dept_data():
+    if os.path.exists(SALES_DEPT_DATA_PATH):
+        try:
+            with open(SALES_DEPT_DATA_PATH) as f:
+                d = json.load(f)
+            if d.get("months") and d.get("rows") is not None:
+                return d
+        except Exception:
+            pass
+    return {"months": list(_DEFAULT_SALES_DEPT_MONTHS), "rows": [dict(r) for r in _DEFAULT_SALES_DEPT_ROWS]}
+
+def save_sales_dept_data(d):
+    with open(SALES_DEPT_DATA_PATH, "w") as f:
+        json.dump(d, f, indent=2)
 
 # ── Data persistence ─────────────────────────────────────────────────────────
 
@@ -2409,27 +2444,78 @@ def page_estimate(data):
 
 def _page_sales_dept_data(data):
     st.title("💼 Sales Dept Data")
-    MONTHS = ["Oct-25", "Nov-25", "Dec-25", "Jan-26", "Feb-26", "Mar-26", "Apr-26"]
 
-    _RAW = [
-        ("Rent",         "Regus Management",   0.00,     2362.99,  1646.26,  1692.11,  1660.21,  1645.91,  2735.01),
-        ("Food & Drink", "Food Exps",          398.22,    661.86,    56.73,   292.96,   711.23,  1545.06,   362.30),
-        ("Marketing",    "NATHO",               0.00,   1500.00,     0.00,  2695.00,     0.00,     0.00,     0.00),
-        ("Marketing",    "STAFFING IND AN",  2574.00,      0.00,     0.00,     0.00,     0.00,     0.00,     0.00),
-        ("Marketing",    "ASC COMMUNICA",       0.00,      0.00,     0.00,     0.00, 17500.00,     0.00,  2500.00),
-        ("Marketing",    "MINUTEMAN PRES",      0.00,      0.00,     0.00,     0.00,    78.40,     0.00,     0.00),
-        ("Travel",       "Travelling Exps",  2011.58,   1350.77,   533.20,  1650.66,  2992.14,  2590.64,  1957.33),
-        ("Shipping Charges", "Shipping Charges",  0.00,      0.00,     0.00,     0.00,     0.00,   287.50,  3080.01),
-        ("Software",     "ChatGpt",             0.00,      0.00,    60.00,    60.00,    60.00,    60.00,    44.13),
-        ("Software",     "SALESFORCE",        210.00,    125.00,   125.00,   125.00,     0.00,   241.25,     0.00),
-        ("Salary",       "Brett Williams",   4027.75,  11114.52, 11114.68, 10416.66, 10416.66, 10416.66, 10416.66),
-        ("Salary",       "Shravan",          1618.88,   1618.88,  1618.88,  1618.88,  1618.88,  1618.88,  1618.88),
-        ("Salary",       "Dominic",           730.00,    730.00,   730.00,   730.00,   730.00,   730.00,   730.00),
-        ("Salary",       "Jen",                 0.00,      0.00,     0.00,  3906.50,  5000.00,  5000.00,  5000.00),
-        ("Salary",       "Kenzie",              0.00,      0.00,     0.00,  2604.34,  3333.30,  3333.30,  3333.30),
-    ]
+    sd_data = load_sales_dept_data()
+    MONTHS  = sd_data.get("months", list(_DEFAULT_SALES_DEPT_MONTHS))
+    rows    = sd_data.get("rows", [])
 
-    detail_df = pd.DataFrame(_RAW, columns=["Categories", "Particulars"] + MONTHS)
+    # ── Editor (admin) ─────────────────────────────────────────────────────────
+    role = st.session_state.get("role", "admin")
+    if role == "admin":
+        with st.expander("✏️ Edit Data — rows, categories, months", expanded=False):
+            st.caption(
+                "Add or change rows directly in the table. New category names get their own row in summaries. "
+                "Update the months list to add/remove month columns. Click Save Changes when done."
+            )
+
+            months_input = st.text_input(
+                "Months (comma-separated, e.g. `Oct-25, Nov-25, Dec-25, ...`)",
+                value=", ".join(MONTHS),
+                key="sd_months_input",
+            )
+            new_months = [m.strip() for m in months_input.split(",") if m.strip()]
+
+            editor_df = pd.DataFrame(rows) if rows else pd.DataFrame(
+                columns=["Categories", "Particulars"] + new_months
+            )
+            for m in new_months:
+                if m not in editor_df.columns:
+                    editor_df[m] = 0.0
+            keep_cols = ["Categories", "Particulars"] + new_months
+            editor_df = editor_df.reindex(columns=keep_cols, fill_value=0.0)
+
+            edited = st.data_editor(
+                editor_df,
+                num_rows="dynamic",
+                use_container_width=True,
+                column_config={
+                    "Categories":  st.column_config.TextColumn("Categories", help="e.g. Rent, Marketing, Travel — group rows by category"),
+                    "Particulars": st.column_config.TextColumn("Particulars"),
+                    **{m: st.column_config.NumberColumn(m, format="$%.2f", default=0.0) for m in new_months},
+                },
+                key="sd_editor",
+            )
+
+            cs1, cs2 = st.columns([1, 4])
+            if cs1.button("💾 Save Changes", type="primary", key="sd_save"):
+                new_rows = []
+                for _, row in edited.iterrows():
+                    cat = str(row.get("Categories", "")).strip()
+                    par = str(row.get("Particulars", "")).strip()
+                    if not cat or not par or cat.lower() == "nan" or par.lower() == "nan":
+                        continue
+                    rd = {"Categories": cat, "Particulars": par}
+                    for m in new_months:
+                        v = row.get(m, 0)
+                        rd[m] = 0.0 if pd.isna(v) else float(v)
+                    new_rows.append(rd)
+                save_sales_dept_data({"months": new_months, "rows": new_rows})
+                st.success(f"Saved {len(new_rows)} row(s) across {len(new_months)} month(s).")
+                st.rerun()
+            cs2.caption("Changes persist on the Railway volume (DATA_DIR).")
+
+    # ── Build detail_df from saved data ────────────────────────────────────────
+    if not rows:
+        st.info("No data yet. Use the editor above to add rows.")
+        return
+
+    detail_df = pd.DataFrame(rows)
+    for m in MONTHS:
+        if m not in detail_df.columns:
+            detail_df[m] = 0.0
+    detail_df = detail_df[["Categories", "Particulars"] + MONTHS]
+    for m in MONTHS:
+        detail_df[m] = pd.to_numeric(detail_df[m], errors="coerce").fillna(0)
 
     fmt_dict = {m: "${:,.2f}" for m in MONTHS}
 
