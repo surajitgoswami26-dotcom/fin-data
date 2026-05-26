@@ -250,36 +250,24 @@ _WANTED = [
     *COST_COLS, "Balance",
 ]
 
-def get_actual_cost_totals_usd(bust=0):
+def get_actual_cost_totals_usd(month=None, bust=0):
     """
-    Build cost totals in $ from actual live sources so that:
-      sum(all cols) = Billing Payroll + Non-Billing Payroll + Total Expenses.
-
-    Column mapping:
-      Salary/Payroll  → total billing employee salaries (Employee Summery)
-      Bench Payroll   → Payroll - Non Bill from Employee Summary sheet
-      Marketing & BD  → Marketing dept payroll + Marketing overhead expenses
-      HR, Admin, Mngt → HR + Admin + Management dept payroll
-      Software        → Expenses sheet "Software"
-      JobBoards       → Expenses sheet "Job Boards"
-      Infrastructure  → Expenses sheet "Infrastructure"
-      Rent            → Expenses sheet "Rent"
-      Travel          → Expenses sheet "Travel"
-      Meals           → Expenses sheet "Meals"
-      Fees & Charges  → Expenses sheet "Fees & Charges"
-      Other Expenses  → Expenses sheet "Other Expenses" + "Bonus & Incentive"
+    Build cost totals in $ from actual live sources, scoped to one month when
+    provided. When month is None, falls back to the most-recent available sheet
+    (legacy behaviour).
     """
     emp_data      = load_employees()
     active_xl     = _get_active_excel()
-    xl_exp        = load_excel_expenses(active_xl, _bust=bust)
-    sal_lookup    = load_billing_salaries(active_xl, _bust=bust)
-    bench_payroll = load_bench_salaries(active_xl, _bust=bust)
+    if month is not None:
+        xl_exp = load_expenses_for_month(active_xl, month, _bust=bust)
+    else:
+        xl_exp = load_excel_expenses(active_xl, _bust=bust)
+    sal_lookup    = load_billing_salaries(active_xl, month=month, _bust=bust)
+    bench_payroll = load_bench_salaries(active_xl, month=month, _bust=bust)
     billing_payroll = sum(sal_lookup.values())
 
-    # ── Marketing / HR / Admin / Management payroll ─────────────────────────────
-    # Primary source: Employee Summary sheet (whatever the active Excel has now).
-    # Fallback: manually added rows in employees.json.
-    emp_df = _load_employee_sheet(active_xl, _bust=bust)
+    # ── Marketing / HR / Admin / Management payroll (month-specific) ──────────
+    emp_df = _load_employee_sheet(active_xl, month=month, _bust=bust)
 
     def _excel_sum(*keywords):
         if emp_df.empty:
@@ -447,10 +435,7 @@ def get_all_data():
     sheets  = load_excel(_get_active_excel(), _bust=bust)
     sheets  = {k: v.copy() for k, v in sheets.items()}
 
-    cost_totals_usd = get_actual_cost_totals_usd(bust=bust)
-    cost_totals     = {k: v * _INR_RATE for k, v in cost_totals_usd.items()}
-    total_cost_usd  = sum(cost_totals_usd.values())
-    fx_rates        = load_fx_rates()
+    fx_rates = load_fx_rates()
 
     # ── Merge any manually added custom records ────────────────────────────────
     # Excel (BILLING_SHEETS) is authoritative — skip data.json for those months
@@ -482,8 +467,7 @@ def get_all_data():
                 df.loc[mask, "Billing ($)"] = vals["Billing ($)"]
         sheets[month] = df
 
-    # ── Inject cost totals + Balance for ALL months (runs last so every
-    #    month — whether from Excel, custom JSON, or import — is covered) ───────
+    # ── Inject MONTH-SPECIFIC cost totals + Balance for every month ──────────
     for month, df in sheets.items():
         N = len(df)
         if N == 0:
@@ -492,9 +476,12 @@ def get_all_data():
             df["Billing ($)"] = 0.0
         fx_rate = fx_rates.get(month, _INR_RATE)
         df["Billing (Rs.)"] = df["Billing ($)"] * fx_rate
+
+        cost_totals_usd  = get_actual_cost_totals_usd(month=month, bust=bust)
+        total_cost_month = sum(cost_totals_usd.values())
         for c in COST_COLS:
-            df[c] = cost_totals.get(c, 0) / N
-        df["Balance"] = df["Billing ($)"] - (total_cost_usd / N)
+            df[c] = cost_totals_usd.get(c, 0) * _INR_RATE / N
+        df["Balance"] = df["Billing ($)"] - (total_cost_month / N)
         sheets[month] = df
 
     return sheets
@@ -551,7 +538,7 @@ def page_dashboard(data):
 
     df         = data[sel_month].copy()
     total_rev  = df["Billing ($)"].sum()
-    total_cost = sum(get_actual_cost_totals_usd().values())
+    total_cost = sum(get_actual_cost_totals_usd(month=sel_month).values())
     total_bal  = df["Balance"].sum()
     profitable = int((df["Balance"] > 0).sum())
     loss_seats = int((df["Balance"] <= 0).sum())
@@ -2062,7 +2049,7 @@ def _page_estimate_forward(data, months):
     last_month = sorted(months, key=_month_sort_key)[-1]
 
     bust = st.session_state.get("cache_bust", 0)
-    actual_costs = get_actual_cost_totals_usd(bust=bust)
+    actual_costs = get_actual_cost_totals_usd(month=last_month, bust=bust)
 
     # ── Hero ───────────────────────────────────────────────────────────────────
     col_hero, col_ref = st.columns([3, 1])
