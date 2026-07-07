@@ -270,14 +270,22 @@ def get_actual_cost_totals_usd(month=None, bust=0):
     emp_df = _load_employee_sheet(active_xl, month=month, _bust=bust)
 
     def _excel_sum(*keywords):
-        if emp_df.empty:
+        if emp_df is None or emp_df.empty:
             return 0.0
-        cats = emp_df["Category"].astype(str).str.lower()
-        # Exclude rows already counted as billing/bench so we don't double-count
-        mask = (~cats.isin(["payroll - billing", "payroll - non bill"])) & cats.apply(
-            lambda c: any(kw in c for kw in keywords)
-        )
-        return float(emp_df.loc[mask, "Amount"].sum())
+        excluded = {"payroll - billing", "payroll - non bill"}
+        total = 0.0
+        cats = list(emp_df["Category"])
+        amts = list(emp_df["Amount"])
+        for cat, amt in zip(cats, amts):
+            cat_s = "" if cat is None else str(cat).lower().strip()
+            if not cat_s or cat_s in excluded or cat_s == "nan":
+                continue
+            if any(kw in cat_s for kw in keywords):
+                try:
+                    total += float(amt)
+                except (TypeError, ValueError):
+                    pass
+        return total
 
     marketing_excel = _excel_sum("marketing", "bd", "business dev")
     hr_admin_mgmt_excel = _excel_sum("hr", "admin", "management", "mngt", "mgmt")
@@ -1602,20 +1610,31 @@ def page_employee_details(data):
             """Rows from the Excel Employee Summary whose Category matches a keyword."""
             if _xl_emp is None or _xl_emp.empty:
                 return []
-            cats = _xl_emp["Category"].astype(str).str.lower()
-            mask = (~cats.isin(["payroll - billing", "payroll - non bill"])) & cats.apply(
-                lambda c: any(kw in c for kw in keywords)
-            )
-            rows = _xl_emp.loc[mask]
-            return [
-                {"Name": str(r["Name"]).strip(),
-                 "Designation": "",
-                 "Salary ($)": float(r["Amount"]),
-                 "Join Date": "",
-                 "Notes": "from Employee Summary sheet"}
-                for _, r in rows.iterrows()
-                if str(r["Name"]).strip().lower() not in ("nan", "none", "", "total")
-            ]
+            excluded = {"payroll - billing", "payroll - non bill"}
+            out = []
+            for _, r in _xl_emp.iterrows():
+                cat = r.get("Category")
+                cat_s = "" if cat is None else str(cat).lower().strip()
+                if not cat_s or cat_s in excluded or cat_s == "nan":
+                    continue
+                if not any(kw in cat_s for kw in keywords):
+                    continue
+                name = r.get("Name")
+                name_s = "" if name is None else str(name).strip()
+                if name_s.lower() in ("nan", "none", "", "total"):
+                    continue
+                try:
+                    amt = float(r.get("Amount") or 0)
+                except (TypeError, ValueError):
+                    amt = 0.0
+                out.append({
+                    "Name": name_s,
+                    "Designation": "",
+                    "Salary ($)": amt,
+                    "Join Date": "",
+                    "Notes": "from Employee Summary sheet",
+                })
+            return out
 
         def _merge_dept(json_emps, xl_emps):
             """Merge json + excel, json wins on name conflicts (case-insensitive)."""
