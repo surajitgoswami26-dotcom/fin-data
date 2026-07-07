@@ -2076,6 +2076,85 @@ def page_import():
         finally:
             os.unlink(tmp_path)
 
+    st.divider()
+
+    # ── Clear a month's data ──────────────────────────────────────────────────
+    with st.expander("🗑 Clear a Month's Data", expanded=False):
+        st.caption(
+            "Remove a month from `data.json`, its P&L overrides, and any manual "
+            "expenses tagged to that month. Useful when re-uploading fresh data."
+        )
+        custom = load_json_data()
+        overrides_all = load_overrides()
+        expenses_all  = load_expenses()
+        months_in_data = sorted(set(custom.keys()) | set(overrides_all.keys()) |
+                                {e.get("Month") for e in expenses_all if e.get("Month")})
+        months_in_data = [m for m in months_in_data if isinstance(m, str) and m.strip()]
+
+        if not months_in_data:
+            st.info("Nothing to clear — no manually-imported months found.")
+        else:
+            cc1, cc2 = st.columns([2, 1])
+            clear_month = cc1.selectbox("Month to clear", months_in_data, key="clear_month")
+            confirm     = cc2.checkbox("I confirm delete", key="clear_confirm")
+
+            if st.button("🗑 Delete Month Data", type="primary", disabled=not confirm, key="clear_btn"):
+                removed = []
+                if clear_month in custom:
+                    del custom[clear_month]
+                    save_json_data(custom)
+                    removed.append(f"data.json entry for {clear_month}")
+                if clear_month in overrides_all:
+                    del overrides_all[clear_month]
+                    save_overrides(overrides_all)
+                    removed.append(f"P&L overrides for {clear_month}")
+                filtered_exp = [e for e in expenses_all if e.get("Month") != clear_month]
+                if len(filtered_exp) != len(expenses_all):
+                    save_expenses(filtered_exp)
+                    removed.append(f"{len(expenses_all) - len(filtered_exp)} manual expense entry/entries")
+
+                if clear_month in BILLING_SHEETS.values():
+                    st.warning(
+                        f"⚠️ Note: {clear_month} still comes from the master Excel sheets "
+                        f"({[k for k, v in BILLING_SHEETS.items() if v == clear_month]}) in whichever uploaded file has it. "
+                        "To fully remove, also delete or replace the corresponding uploaded Excel below."
+                    )
+
+                st.cache_data.clear()
+                if removed:
+                    st.success("Cleared: " + " · ".join(removed))
+                    st.rerun()
+                else:
+                    st.info(f"Nothing was stored for {clear_month} — refreshed cache anyway.")
+                    st.rerun()
+
+    # ── Uploaded files ────────────────────────────────────────────────────────
+    with st.expander("📁 Uploaded Excel Files (delete stale uploads)", expanded=False):
+        st.caption("Any file here is searched for billing/employee/expense sheets. Delete one to stop it contributing.")
+        excels = _get_all_excels()
+        if not excels:
+            st.info("No uploaded files.")
+        else:
+            for fpath in excels:
+                fname = os.path.basename(fpath)
+                fc1, fc2 = st.columns([5, 1])
+                fc1.write(f"📄 `{fname}`")
+                if fc2.button("Delete", key=f"del_file_{fname}"):
+                    try:
+                        os.remove(fpath)
+                        if os.path.exists(CONFIG_PATH):
+                            with open(CONFIG_PATH) as f:
+                                cfg = json.load(f)
+                            if cfg.get("active_excel_path") == fpath:
+                                cfg["active_excel_path"] = ""
+                                with open(CONFIG_PATH, "w") as f:
+                                    json.dump(cfg, f, indent=2)
+                        st.cache_data.clear()
+                        st.success(f"Deleted {fname}")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Delete failed: {e}")
+
 
 def _page_estimate_forward(data, months):
     # Use the most recent month as the cost baseline
