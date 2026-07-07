@@ -1665,7 +1665,7 @@ def page_employee_details(data):
         tab_marketing, tab_hradmin, tab_mgmt = st.tabs([f"📌 {d}" for d in DISPLAY_TABS])
 
         def _render_dept_tab(dept, dtab):
-            """Render a single-dept tab (Marketing or Management)."""
+            """Render a single-dept tab (Marketing or Management) with inline editing."""
             with dtab:
                 json_emps = emp_data.get(dept, [])
                 xl_emps   = _xl_dept_rows(DEPT_KEYWORDS[dept])
@@ -1675,52 +1675,60 @@ def page_employee_details(data):
                 d1.metric(f"{dept} Headcount", len(employees))
                 d2.metric(f"{dept} Payroll",   f"${dept_salary:,.2f}")
 
-                if employees:
-                    df_dept = pd.DataFrame(employees)
-                    for col in EMP_FIELDS:
-                        if col not in df_dept.columns:
-                            df_dept[col] = ""
-                    df_dept = df_dept[EMP_FIELDS]
-                    df_dept.index = range(1, len(df_dept) + 1)
-                    styled_d = df_dept.style.format({"Salary ($)": lambda v: f"${v:,.2f}" if v else "—"})
-                    st.dataframe(styled_d, use_container_width=True, height=280)
-                    csv_d = df_dept.to_csv(index=False).encode()
-                    st.download_button(f"Download {dept} CSV", csv_d, f"{dept.lower()}_employees.csv", "text/csv", key=f"dl_{dept}")
-                else:
-                    st.info(f"No {dept} employees added yet. Use the form below to add.")
+                st.caption("Edit any cell, add rows with the `+`, remove rows with `Delete`. Click Save Changes to persist.")
 
-                with st.expander(f"➕ Add {dept} Employee"):
-                    with st.form(f"form_{dept}", clear_on_submit=True):
-                        r1c1, r1c2, r1c3, r1c4 = st.columns(4)
-                        name        = r1c1.text_input("Name *")
-                        designation = r1c2.text_input("Designation")
-                        salary      = r1c3.number_input("Salary ($)", min_value=0.0, step=10.0, format="%.2f")
-                        join_date   = r1c4.text_input("Join Date (e.g. Jan 2025)")
-                        notes       = st.text_input("Notes")
-                        submitted   = st.form_submit_button("Save Employee", type="primary")
-                    if submitted:
-                        if not name:
-                            st.error("Name is required.")
-                        else:
-                            emp_data[dept].append({"Name": name, "Designation": designation, "Salary ($)": salary, "Join Date": join_date, "Notes": notes})
-                            save_employees(emp_data)
-                            st.success(f"Added {name} to {dept}.")
-                            st.rerun()
+                df_dept = pd.DataFrame(employees) if employees else pd.DataFrame(columns=EMP_FIELDS)
+                for col in EMP_FIELDS:
+                    if col not in df_dept.columns:
+                        df_dept[col] = ""
+                df_dept = df_dept[EMP_FIELDS]
+
+                edited = st.data_editor(
+                    df_dept,
+                    use_container_width=True,
+                    num_rows="dynamic",
+                    column_config={
+                        "Name":        st.column_config.TextColumn("Name", required=True),
+                        "Designation": st.column_config.TextColumn("Designation"),
+                        "Salary ($)":  st.column_config.NumberColumn("Salary ($)", format="$%.2f", min_value=0.0, step=10.0),
+                        "Join Date":   st.column_config.TextColumn("Join Date"),
+                        "Notes":       st.column_config.TextColumn("Notes"),
+                    },
+                    key=f"ed_{dept}_editor",
+                )
+
+                cs1, cs2 = st.columns([1, 4])
+                if cs1.button(f"💾 Save {dept}", type="primary", key=f"ed_{dept}_save"):
+                    new_emps = []
+                    for _, row in edited.iterrows():
+                        name = str(row.get("Name", "") or "").strip()
+                        if not name or name.lower() in ("nan", ""):
+                            continue
+                        try:
+                            sal = float(row.get("Salary ($)", 0) or 0)
+                        except (TypeError, ValueError):
+                            sal = 0.0
+                        new_emps.append({
+                            "Name":        name,
+                            "Designation": str(row.get("Designation", "") or "").strip(),
+                            "Salary ($)":  sal,
+                            "Join Date":   str(row.get("Join Date", "") or "").strip(),
+                            "Notes":       str(row.get("Notes", "") or "").strip(),
+                        })
+                    emp_data[dept] = new_emps
+                    save_employees(emp_data)
+                    st.success(f"Saved {len(new_emps)} {dept} employee(s).")
+                    st.rerun()
+                cs2.caption("Changes save to employees.json on the persistent volume.")
 
                 if employees:
-                    with st.expander(f"🗑 Remove a {dept} Employee"):
-                        names_list = [r.get("Name", f"Row {i}") for i, r in enumerate(employees)]
-                        to_delete  = st.selectbox("Select employee to remove", names_list, key=f"del_{dept}")
-                        if st.button(f"Remove {to_delete}", key=f"delbtn_{dept}"):
-                            emp_data[dept] = [r for r in employees if r.get("Name") != to_delete]
-                            save_employees(emp_data)
-                            st.success(f"Removed {to_delete}.")
-                            st.rerun()
+                    csv_d = pd.DataFrame(employees).to_csv(index=False).encode()
+                    st.download_button(f"⬇ Download {dept} CSV", csv_d, f"{dept.lower()}_employees.csv", "text/csv", key=f"dl_{dept}")
 
         _render_dept_tab("Marketing",   tab_marketing)
         _render_dept_tab("Management",  tab_mgmt)
 
-        # ── HR & Admin combined tab ───────────────────────────────────────────
+        # ── HR & Admin combined tab (editable) ────────────────────────────────
         with tab_hradmin:
             hr_emps    = _merge_dept(emp_data.get("HR", []),    _xl_dept_rows(DEPT_KEYWORDS["HR"]))
             admin_emps = _merge_dept(emp_data.get("Admin", []), _xl_dept_rows(DEPT_KEYWORDS["Admin"]))
@@ -1729,64 +1737,69 @@ def page_employee_details(data):
 
             d1, d2, d3 = st.columns(3)
             d1.metric("HR Headcount",       len(hr_emps))
-            d2.metric("Admin Headcount",     len(admin_emps))
-            d3.metric("HR & Admin Payroll",  f"${total_salary:,.2f}")
+            d2.metric("Admin Headcount",    len(admin_emps))
+            d3.metric("HR & Admin Payroll", f"${total_salary:,.2f}")
+
+            st.caption("Set Dept to `HR` or `Admin`. Edit any cell, add rows with `+`, remove with `Delete`. Click Save when done.")
+
+            def _tag_dept(rows, label):
+                return [{**r, "Dept": label} for r in rows]
+
+            combined_rows = _tag_dept(hr_emps, "HR") + _tag_dept(admin_emps, "Admin")
+            show_ha = ["Dept"] + EMP_FIELDS
+            df_ha = pd.DataFrame(combined_rows) if combined_rows else pd.DataFrame(columns=show_ha)
+            for col in show_ha:
+                if col not in df_ha.columns:
+                    df_ha[col] = ""
+            df_ha = df_ha[show_ha]
+
+            edited_ha = st.data_editor(
+                df_ha,
+                use_container_width=True,
+                num_rows="dynamic",
+                column_config={
+                    "Dept":        st.column_config.SelectboxColumn("Dept", options=["HR", "Admin"], required=True),
+                    "Name":        st.column_config.TextColumn("Name", required=True),
+                    "Designation": st.column_config.TextColumn("Designation"),
+                    "Salary ($)":  st.column_config.NumberColumn("Salary ($)", format="$%.2f", min_value=0.0, step=10.0),
+                    "Join Date":   st.column_config.TextColumn("Join Date"),
+                    "Notes":       st.column_config.TextColumn("Notes"),
+                },
+                key="ed_hradmin_editor",
+            )
+
+            cs1, cs2 = st.columns([1, 4])
+            if cs1.button("💾 Save HR & Admin", type="primary", key="ed_hradmin_save"):
+                new_hr, new_admin = [], []
+                for _, row in edited_ha.iterrows():
+                    name = str(row.get("Name", "") or "").strip()
+                    if not name or name.lower() in ("nan", ""):
+                        continue
+                    dept_tag = str(row.get("Dept", "") or "").strip()
+                    if dept_tag not in ("HR", "Admin"):
+                        continue
+                    try:
+                        sal = float(row.get("Salary ($)", 0) or 0)
+                    except (TypeError, ValueError):
+                        sal = 0.0
+                    rec = {
+                        "Name":        name,
+                        "Designation": str(row.get("Designation", "") or "").strip(),
+                        "Salary ($)":  sal,
+                        "Join Date":   str(row.get("Join Date", "") or "").strip(),
+                        "Notes":       str(row.get("Notes", "") or "").strip(),
+                    }
+                    (new_hr if dept_tag == "HR" else new_admin).append(rec)
+                emp_data["HR"]    = new_hr
+                emp_data["Admin"] = new_admin
+                save_employees(emp_data)
+                st.success(f"Saved {len(new_hr)} HR + {len(new_admin)} Admin employee(s).")
+                st.rerun()
+            cs2.caption("Changes save to employees.json on the persistent volume.")
 
             if all_emps:
-                def _tag_dept(rows, label):
-                    out = []
-                    for r in rows:
-                        rec = {**r, "Dept": label}
-                        out.append(rec)
-                    return out
-
-                combined_rows = _tag_dept(hr_emps, "HR") + _tag_dept(admin_emps, "Admin")
-                df_ha = pd.DataFrame(combined_rows)
-                show_ha = ["Dept"] + EMP_FIELDS
-                for col in show_ha:
-                    if col not in df_ha.columns:
-                        df_ha[col] = ""
-                df_ha = df_ha[show_ha]
-                df_ha.index = range(1, len(df_ha) + 1)
-                styled_ha = df_ha.style.format({"Salary ($)": lambda v: f"${v:,.2f}" if v else "—"})
-                st.dataframe(styled_ha, use_container_width=True, height=300)
-                csv_ha = df_ha.to_csv(index=False).encode()
-                st.download_button("Download HR & Admin CSV", csv_ha, "hr_admin_employees.csv", "text/csv", key="dl_hradmin")
-            else:
-                st.info("No HR or Admin employees added yet.")
-
-            # Add form — choose sub-dept
-            with st.expander("➕ Add HR / Admin Employee"):
-                with st.form("form_hradmin", clear_on_submit=True):
-                    sub_dept    = st.selectbox("Department", ["HR", "Admin"])
-                    r1c1, r1c2, r1c3, r1c4 = st.columns(4)
-                    name        = r1c1.text_input("Name *")
-                    designation = r1c2.text_input("Designation")
-                    salary      = r1c3.number_input("Salary ($)", min_value=0.0, step=10.0, format="%.2f")
-                    join_date   = r1c4.text_input("Join Date (e.g. Jan 2025)")
-                    notes       = st.text_input("Notes")
-                    submitted   = st.form_submit_button("Save Employee", type="primary")
-                if submitted:
-                    if not name:
-                        st.error("Name is required.")
-                    else:
-                        emp_data[sub_dept].append({"Name": name, "Designation": designation, "Salary ($)": salary, "Join Date": join_date, "Notes": notes})
-                        save_employees(emp_data)
-                        st.success(f"Added {name} to {sub_dept}.")
-                        st.rerun()
-
-            # Delete — across both HR and Admin
-            if all_emps:
-                with st.expander("🗑 Remove an HR / Admin Employee"):
-                    labels = [f"[{d}] {r.get('Name','?')}" for d, rows in [("HR", hr_emps), ("Admin", admin_emps)] for r in rows]
-                    to_delete = st.selectbox("Select employee to remove", labels, key="del_hradmin")
-                    if st.button(f"Remove {to_delete}", key="delbtn_hradmin"):
-                        dept_tag, emp_name = to_delete.split("] ", 1)
-                        dept_tag = dept_tag.lstrip("[")
-                        emp_data[dept_tag] = [r for r in emp_data[dept_tag] if r.get("Name") != emp_name]
-                        save_employees(emp_data)
-                        st.success(f"Removed {emp_name} from {dept_tag}.")
-                        st.rerun()
+                csv_ha = pd.DataFrame(combined_rows).to_csv(index=False).encode()
+                st.download_button("⬇ Download HR & Admin CSV", csv_ha, "hr_admin_employees.csv", "text/csv", key="dl_hradmin")
 
 
 def page_expenses(data):
