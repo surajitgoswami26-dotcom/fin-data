@@ -415,6 +415,14 @@ def load_excel_sheet(path, sheet):
     df["Client Name"] = df["Client Name"].ffill()
     for col in ["Billing ($)", "Billing (Rs.)", *COST_COLS, "Balance"]:
         df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
+
+    # Auto-fix: a per-seat Billing($) >= $10k is almost always the INR value
+    # entered in the $ column by mistake (e.g. Sameer Tripathi at ₹114,884
+    # showing as $114,884). Divide by INR rate to recover the real USD amount.
+    if "Billing ($)" in df.columns:
+        inr_mask = df["Billing ($)"] >= 10000
+        if inr_mask.any():
+            df.loc[inr_mask, "Billing ($)"] = df.loc[inr_mask, "Billing ($)"] / _INR_RATE
     return df.reset_index(drop=True)
 
 @st.cache_data(ttl=0)
